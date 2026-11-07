@@ -5,6 +5,8 @@ import fs from "fs";
 import { prisma } from "./prisma.js";
 import { authRouter } from "./routes/auth.js";
 import { operatorRouter } from "./routes/operator.js";
+import { productsRouter } from "./routes/products.js";
+import { ordersRouter } from "./routes/orders.js";
 
 export const app = express();
 
@@ -29,6 +31,8 @@ app.get("/api/ready", async (_req, res) => {
 // Domain Routers
 app.use("/api/auth", authRouter);
 app.use("/api/operator", operatorRouter);
+app.use("/api/products", productsRouter);
+app.use("/api/orders", ordersRouter);
 
 // Static Frontend Serving for Unified Production Container
 const clientDistPath = path.resolve(process.cwd(), "../client/dist");
