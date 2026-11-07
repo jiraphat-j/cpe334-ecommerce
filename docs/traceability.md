@@ -3,7 +3,8 @@
 > **Document ID:** TRACE-01  
 > **Milestone:** Deliverable 1 (Part B)  
 > **Course:** CPE 334 Introduction to Software Engineering in the Age of AI Agents  
-> **Theme:** E-Commerce or Ordering System (Customer / Operator)
+> **Theme:** E-Commerce or Ordering System (Customer / Operator)  
+> **Version:** 1.1.0 (Synchronized with Contracts v1.1.0)
 
 ---
 
@@ -30,17 +31,17 @@
 | **FR-01** | FR | F-01 User Auth & Role RBAC | Sprint 1 | AC-01 (Register Customer)<br/>AC-02 (Login Authenticated) | TEST-01 (Register API)<br/>TEST-02 (Login Success/Fail) |
 | **FR-02** | FR | F-01 User Auth & Role RBAC | Sprint 1 | AC-03 (Current User Identity) | TEST-03 (`/api/auth/me` check) |
 | **FR-03** | FR | F-02 Product Catalog | Sprint 1 | AC-04 (Browse Product List) | TEST-04 (Catalog listing API) |
-| **FR-04** | FR | F-03 Customer Order Placement | Sprint 1 | AC-05 (Create Order Normal) | TEST-05 (Order creation & response) |
-| **FR-05** | FR | F-03 Customer Order Placement | Sprint 1 | AC-06 (Customer View Own Orders) | TEST-06 (Customer order history query) |
-| **FR-06** | FR | F-04 Operator Order Management | Sprint 1 | AC-07 (Operator View All Orders) | TEST-07 (Operator dashboard API) |
-| **FR-07** | FR | F-04 Operator Order Management | Sprint 1 | AC-08 (Status State Transition) | TEST-08 (Status update transition API) |
+| **FR-04** | FR | F-03 Customer Order Placement | Sprint 1 | AC-05 (Create Order Normal) | TEST-05 (Order creation & atomic stock deduction) |
+| **FR-05** | FR | F-03 Customer Order Placement | Sprint 1 | AC-07 (Customer Order Isolation) | TEST-09 (Customer own order history query) |
+| **FR-06** | FR | F-04 Operator Order Management | Sprint 1 | AC-08 (Operator View All Orders) | TEST-10 (Operator all orders query) |
+| **FR-07** | FR | F-04 Operator Order Management | Sprint 1 | AC-09 (Valid Status Transition) | TEST-11 (Operator status update API) |
 | **BR-01** | BR | F-01 User Auth & Role RBAC | Sprint 1 | AC-02 (Password Hashing) | TEST-02 (Bcrypt verification check) |
-| **BR-02** | BR | F-03 Customer Order Placement | Sprint 1 | AC-06 (Customer Record Isolation) | TEST-09 (Cross-customer order access rejection $\rightarrow$ 403) |
-| **BR-03** | BR | F-03 Customer Order Placement | Sprint 1 | AC-05 (Out-of-Stock Rejection) | TEST-10 (Order quantity $>$ stock rejection $\rightarrow$ 400) |
-| **BR-04** | BR | F-03 Customer Order Placement | Sprint 1 | AC-05 (Atomic Stock Decrement) | TEST-11 (Stock count verification post-order) |
-| **BR-05** | BR | F-04 Operator Order Management | Sprint 1 | AC-08 (Invalid Transition Blocked) | TEST-12 (Invalid status change rejection $\rightarrow$ 400) |
-| **BR-06** | BR | F-01 / F-04 RBAC Enforcement | Sprint 1 | AC-07 (Role Restriction) | TEST-13 (Customer accessing operator API $\rightarrow$ 403) |
-| **NFR-01** | NFR | F-01 / F-04 Access Control | Sprint 1 | AC-02, AC-07 (Zero Unauthorized Pass) | TEST-14 (Unauthenticated request $\rightarrow$ 401) |
+| **BR-02** | BR | F-03 Customer Order Placement | Sprint 1 | AC-07 (Customer Record Isolation) | TEST-08 (Cross-customer order access rejection $\rightarrow$ 403) |
+| **BR-03** | BR | F-03 Customer Order Placement | Sprint 1 | AC-06 (Out-of-Stock Rejection) | TEST-06 (Order quantity $>$ stock $\rightarrow$ 400)<br/>TEST-07 (Non-positive quantity $\rightarrow$ 400) |
+| **BR-04** | BR | F-03 Customer Order Placement | Sprint 1 | AC-05 (Atomic Stock Deduction) | TEST-05 (Stock count verification post-order) |
+| **BR-05** | BR | F-04 Operator Order Management | Sprint 1 | AC-10 (Invalid Transition Blocked) | TEST-12 (Invalid status change rejection $\rightarrow$ 400) |
+| **BR-06** | BR | F-01 / F-04 RBAC Enforcement | Sprint 1 | AC-08 (Role Restriction) | TEST-13 (Customer accessing operator API $\rightarrow$ 403) |
+| **NFR-01** | NFR | F-01 / F-04 Access Control | Sprint 1 | AC-02, AC-08 (Zero Unauthorized Pass) | TEST-14 (Unauthenticated request $\rightarrow$ 401) |
 | **NFR-02** | NFR | F-02 / F-03 Latency | Sprint 1 | Latency $\le 500\text{ ms}$ | TEST-15 (API execution benchmark) |
 | **NFR-03** | NFR | F-03 Persistence | Sprint 1 | Database records survive restart | TEST-16 (Post-restart data query) |
 | **NFR-04** | NFR | Infrastructure / Code | Sprint 1 | Zero secret leaks in Git history | Git secret audit & push protection check |
@@ -49,7 +50,7 @@
 
 ## 3. Coverage Analysis and Scope Progression
 
-- **Sprint 1 Coverage:** 100% of baseline FRs (`FR-01` through `FR-07`), all core BRs (`BR-01` through `BR-06`), and all critical NFRs (`NFR-01` through `NFR-04`) are formally covered with concrete AC and executable test specifications.
+- **Sprint 1 Coverage:** 100% of baseline FRs (`FR-01` through `FR-07`), all core BRs (`BR-01` through `BR-06`), and all critical NFRs (`NFR-01` through `NFR-04`) are formally covered with concrete AC and executable test specifications (`TEST-01` through `TEST-16`).
 - **Sprint 2 Coverage:** Product maintenance (`F-05`), cart expansion (`F-06`), and self-cancellation with restock (`F-07`).
 - **Sprint 3 Coverage:** Audit log trail (`F-08`), simulated payment gateway (`F-09`), and comprehensive regression hardening.
 - **Coverage Gaps:** No unallocated requirements exist in the baseline specification.
