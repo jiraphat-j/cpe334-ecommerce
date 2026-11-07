@@ -121,7 +121,7 @@ Every feature must produce traceable evidence for the final submission report:
 
 ## Milestone Checkpoints & Deadlines
 
-- Deliverable 1 (Sprint 1): Due 8 Nov 2026, 23:59 (80 pts)
+- Deliverable 1 (Sprint 1): Due 15 Nov 2026, 23:59 (80 pts)
   - Working vertical slice on Localhost.
   - Auth with `Customer` and `Operator` roles.
   - Domain transaction with persistence and business rule validation.

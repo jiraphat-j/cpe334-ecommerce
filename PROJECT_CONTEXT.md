@@ -56,15 +56,15 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    D1["📦 <b>Deliverable 1 (Sprint 1)</b><br/>• กำหนดส่ง: 8 พ.ย. 2569 (80 คะแนน)<br/>• สร้างแกนหลักแอป + รันได้บน Localhost<br/>• มี Login, 2 Roles, สั่งซื้อ, หักสต็อก, เทสต์ผ่าน<br/>• ส่งรายงานเล่ม PDF Parts A-F"]
+    D1["<b>Deliverable 1 (Sprint 1)</b><br/>• กำหนดส่ง: 15 พ.ย. 2569 (80 คะแนน)<br/>• สร้างแกนหลักแอป + รันได้บน Localhost<br/>• มี Login, 2 Roles, สั่งซื้อ, หักสต็อก, เทสต์ผ่าน<br/>• ส่งรายงานเล่ม PDF Parts A-F"]
     
-    L5["☁️ <b>Lab 5: Cloud CI/CD on GCP</b><br/>• กำหนดส่ง: 15 พ.ย. 2569 (100 คะแนน)<br/>• Dockerize แอปจาก Sprint 1<br/>• ทำ CI/CD Pipeline (GitHub Actions + WIF)<br/>• Deploy ขึ้น GCP Cloud Run + Cloud SQL<br/>• ส่ง PDF หลักฐาน 5 ส่วน"]
+    L5["<b>Lab 5: Cloud CI/CD on GCP</b><br/>• กำหนดส่ง: 15 พ.ย. 2569 (100 คะแนน)<br/>• Dockerize แอปจาก Sprint 1<br/>• ทำ CI/CD Pipeline (GitHub Actions + WIF)<br/>• Deploy ขึ้น GCP Cloud Run + Cloud SQL<br/>• ส่ง PDF หลักฐาน 5 ส่วน"]
     
-    D2["🚀 <b>Deliverable 2 (Sprint 2 + Sprint 3 WIP)</b><br/>• กำหนดส่ง: 29 พ.ย. 2569 (70 คะแนน)<br/>• ขยายฟีเจอร์ Sprint 2 เต็มรูปแบบ + แตะ Sprint 3<br/>• Deploy Candidate บน GCP ผ่าน Pipeline<br/>• ส่งรายงานเล่ม PDF Parts A-E"]
+    D2["<b>Deliverable 2 (Sprint 2 + Sprint 3 WIP)</b><br/>• กำหนดส่ง: 29 พ.ย. 2569 (70 คะแนน)<br/>• ขยายฟีเจอร์ Sprint 2 เต็มรูปแบบ + แตะ Sprint 3<br/>• Deploy Candidate บน GCP ผ่าน Pipeline<br/>• ส่งรายงานเล่ม PDF Parts A-E"]
     
-    L6_7["🧪 <b>Lab 6 & Lab 7</b><br/>• เพื่อนกลุ่มอื่นทำ UAT ทดสอบระบบเราบน GCP<br/>• รับ Report Defect แล้วแก้บั๊กผ่าน Pipeline<br/>• วิเคราะห์ประวัติ CI Run & Metrics"]
+    L6_7["<b>Lab 6 & Lab 7</b><br/>• เพื่อนกลุ่มอื่นทำ UAT ทดสอบระบบเราบน GCP<br/>• รับ Report Defect แล้วแก้บั๊กผ่าน Pipeline<br/>• วิเคราะห์ประวัติ CI Run & Metrics"]
     
-    FINAL["🏆 <b>Final Project Delivery</b><br/>• กำหนดส่ง: 13 ธ.ค. 2569 (100 คะแนน)<br/>• รวมผลงานเสร็จสมบูรณ์ 3 Sprints<br/>• วิดีโอเดโมระบบจริง (YouTube ≤ 4 นาที)<br/>• เล่มรายงานสรุปฉบับสมบูรณ์"]
+    FINAL["<b>Final Project Delivery</b><br/>• กำหนดส่ง: 13 ธ.ค. 2569 (100 คะแนน)<br/>• รวมผลงานเสร็จสมบูรณ์ 3 Sprints<br/>• วิดีโอเดโมระบบจริง (YouTube ≤ 4 นาที)<br/>• เล่มรายงานสรุปฉบับสมบูรณ์"]
 
     D1 --> L5 --> D2 --> L6_7 --> FINAL
 ```
@@ -120,7 +120,7 @@ flowchart TD
 
 ## 6. Upcoming Milestones & Roadmap
 
-1. **Deliverable 1 Release & PDF Submission (Due: 8 Nov 2026):**
+1. **Deliverable 1 Release & PDF Submission (Due: 15 Nov 2026, 23:59):**
    * Merge Release PR (`staging-sprint-1` -> `main`).
    * Tag release `v1.0-sprint1` on `main`.
    * Compile Deliverable 1 PDF report (Parts A through F) with captured screenshots and execution evidence.

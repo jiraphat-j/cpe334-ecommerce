@@ -25,7 +25,7 @@ flowchart LR
 ## 2. Sprint Details
 
 ### Sprint 1: Engineering Baseline & Core Vertical Slice
-- **Checkpoint:** Deliverable 1 (Due 8 Nov 2026, 23:59) - 80 points
+- **Checkpoint:** Deliverable 1 (Due 15 Nov 2026, 23:59) - 80 points
 - **Primary Goal:** Prove engineering foundation, complete domain journey on Localhost with database persistence, role segregation, business rule validation, and automated tests.
 - **Included Features:**
   - `F-01`: User Auth & Role RBAC (`Customer` and `Operator`)

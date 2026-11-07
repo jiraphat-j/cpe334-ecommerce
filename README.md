@@ -64,7 +64,7 @@ flowchart TD
 
 ## 3. Sprint 1 Deliverables & Contracts Summary
 
-Sprint 1 delivers the full functional baseline and engineering documentation (Deliverable 1, due 8 Nov 2026):
+Sprint 1 delivers the full functional baseline and engineering documentation (Deliverable 1, due 15 Nov 2026, 23:59):
 
 * **Documentation Baseline:**
   * `docs/srs.md`: Software Requirements Specification (FR-01..07, BR-01..06, NFR-01..04)
