@@ -57,7 +57,7 @@ Before touching any files or creating branches:
    - Reviewer: Reviews code, checks evidence, approves PR (Authors NEVER approve their own PR).
    - Ensure role rotation: If `jiraphat-j` was Author on the last task, `thanapornboont-star` should author the next one where feasible.
 3. Git branch check:
-   - Create branch from `staging` (never branch off `main` for regular features).
+   - Create branch from active sprint integration branch (e.g., `staging-sprint-1` for Sprint 1, `staging-sprint-2` for Sprint 2). Never branch directly off `main` for regular features.
    - Branch naming convention: `feat/<feature-name>`, `fix/<issue-id>`, or `ci/<purpose>`.
 
 ---
@@ -104,14 +104,14 @@ Every feature must produce traceable evidence for the final submission report:
 ---
 
 ### Step 5: Peer Review & Merge Gate
-1. Push branch to remote and open PR into `staging`.
+1. Push branch to remote and open PR into `staging-sprint-<N>` (e.g. `staging-sprint-1`).
 2. Link the corresponding GitHub Issue in the PR description.
 3. Review protocol:
    - The assigned Reviewer inspects diff, tests, and contracts.
    - Reviewer leaves meaningful review comment (e.g., noting security check, test coverage, or edge cases).
    - Reviewer approves. Author does not merge without review approval.
-4. Merge into `staging`.
-5. For release milestones, open Release PR from `staging` into `main`. Verify CI checks pass before merging.
+4. Merge into `staging-sprint-<N>`.
+5. For release milestones, open Release PR from `staging-sprint-<N>` into `main`. Verify CI checks pass before merging.
 
 ---
 
