@@ -25,7 +25,7 @@ Every task, feature, or bug fix must cycle through these 5 checkpoints in order.
 [Start Work]
    │
    ▼
-[Step 1: Pre-Flight Check] ──> Milestone context, assign Author/Reviewer, branch from staging
+[Step 1: Pre-Flight Check] ──> Milestone context, assign Author/Reviewer, branch from staging-sprint-<N>
    │
    ▼
 [Step 2: Contract Definition] ─> Define FR/BR/AC/STS before writing any implementation code
@@ -37,7 +37,7 @@ Every task, feature, or bug fix must cycle through these 5 checkpoints in order.
 [Step 4: Evidence Capture] ────> Capture screenshots, test output, commit SHA for final PDF report
    │
    ▼
-[Step 5: Review & Merge Gate] ─> PR into staging -> Non-author approves -> Merge -> Release PR to main
+[Step 5: Review & Merge Gate] ─> Generate PR Title & Description -> PR into staging -> Non-author approves -> Merge -> Release PR to main
    │
    ▼
 [Task Complete]
@@ -104,8 +104,12 @@ Every feature must produce traceable evidence for the final submission report:
 ---
 
 ### Step 5: Peer Review & Merge Gate
-1. Push branch to remote and open PR into `staging-sprint-<N>` (e.g. `staging-sprint-1`).
-2. Link the corresponding GitHub Issue in the PR description.
+1. Push branch to remote and prepare Pull Request into `staging-sprint-<N>` (e.g. `staging-sprint-1`).
+2. **Mandatory PR Template Generation:** The AI assistant MUST ALWAYS generate a complete, copy-paste ready PR Title and Markdown Description whenever prompting the user to open a PR. The description must contain:
+   - Summary of changes mapped to rubric parts
+   - Linked Issue keyword (`Closes #<id>` or `Part of #<id>`)
+   - Detailed list of modified/created files
+   - Clear Reviewer Checklist & verification instructions for the teammate
 3. Review protocol:
    - The assigned Reviewer inspects diff, tests, and contracts.
    - Reviewer leaves meaningful review comment (e.g., noting security check, test coverage, or edge cases).
