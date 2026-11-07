@@ -127,6 +127,10 @@ jobs:
         env:
           DATABASE_URL: postgresql://toktickit:toktickit@localhost:5432/toktickit?schema=public
         run: |
+          if [ ! -f package.json ]; then
+            echo "No server/package.json found yet, skipping backend tests for docs-only phase..."
+            exit 0
+          fi
           npm ci
           npx prisma migrate deploy
           npm run prisma:seed
@@ -139,6 +143,10 @@ jobs:
       - name: Install, Test & Build Frontend (Vitest + Production Build)
         working-directory: ./client
         run: |
+          if [ ! -f package.json ]; then
+            echo "No client/package.json found yet, skipping frontend build for docs-only phase..."
+            exit 0
+          fi
           npm ci
           npm test
           npm run build
@@ -149,4 +157,8 @@ jobs:
       # ------------------------------------------------------------------------
       - name: Verify Unified Production Dockerfile Build
         run: |
+          if [ ! -f server/package.json ]; then
+            echo "No application source yet, skipping docker build for docs-only phase..."
+            exit 0
+          fi
           docker build -t toktickit-lab4:latest .
