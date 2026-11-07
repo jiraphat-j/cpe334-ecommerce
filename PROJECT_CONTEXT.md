@@ -101,10 +101,34 @@ flowchart TD
 
 ---
 
-## 5. Next Steps (ขั้นตอนถัดไป)
+## 5. Current Project Status & Completed Sprints
 
-1. **หารือโครงสร้างระบบ Sprint 1 อย่างละเอียด** (ขอบเขตฟังก์ชันของ Customer และ Operator)
-2. **สร้าง Skills ประจำโปรเจกต์** เพื่อเป็นเครื่องมือผู้ช่วย AI ในการสร้างเอกสารและควบคุมมาตรฐานโค้ด:
-   - Skill สำหรับสร้าง Engineering Contracts (Part A-E)
-   - Skill สำหรับควบคุม Git/PR Workflow และการบันทึกหลักฐาน
-   - Skill สำหรับ Automated Testing & Docker/GCP Deployment
+### Sprint 1: Baseline Architecture & Core Ordering Workflows (Completed)
+* **Part A–E Engineering Baseline (Issue #1 / PR #5):**
+  * SRS (`docs/srs.md`), Traceability Matrix (`docs/traceability.md`), System SDS (`docs/system-sds.md`), Sprint Plan (`docs/sprints/plan.md`), and Sprint 1 Contracts (`docs/sprints/sprint-1/contracts.md`).
+* **Authentication & RBAC (Issue #2 / PR #6):**
+  * Implemented bcrypt password hashing, JWT token signing, `CUSTOMER` and `OPERATOR` roles, and RBAC middleware.
+* **Product Catalog & Customer Order Workflow (Issue #3 / PR #7):**
+  * Public catalog API, atomic stock verification & deduction via `prisma.$transaction` (BR-01), anti-IDOR isolation, and React SPA client.
+* **Operator Order Management & Status Transitions (Issue #4 / PR #8):**
+  * Store-wide order board, order status state machine enforcement (BR-05), RBAC blocking for customers (BR-06), and Operator UI.
+* **Automated Verification:**
+  * 22 backend automated tests (100% pass) + 1 frontend test (100% pass) + Production build verified.
+  * CI pipeline (`ci-docker.yml`) green.
+
+---
+
+## 6. Upcoming Milestones & Roadmap
+
+1. **Deliverable 1 Release & PDF Submission (Due: 8 Nov 2026):**
+   * Merge Release PR (`staging-sprint-1` -> `main`).
+   * Tag release `v1.0-sprint1` on `main`.
+   * Compile Deliverable 1 PDF report (Parts A through F) with captured screenshots and execution evidence.
+2. **Lab 5: Cloud CI/CD on GCP (Due: 15 Nov 2026):**
+   * Configure Workload Identity Federation (WIF) and service accounts on GCP.
+   * Provision Cloud SQL PostgreSQL instance and Secret Manager secrets.
+   * Setup GitHub Actions automated deployment pipeline (`deploy.yml`) to Google Cloud Run.
+3. **Deliverable 2: Sprint 2 Expansion & UAT Readiness (Due: 29 Nov 2026):**
+   * Implement Sprint 2 features (Inventory restocking, advanced filtering, cancellation policies).
+4. **Final Delivery & Video Demo (Due: 13 Dec 2026):**
+   * Complete 3-sprint release, comprehensive documentation, and 4-minute demonstration video.
