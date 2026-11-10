@@ -30,3 +30,13 @@ Thumbs.db
 
 # Testing coverage
 coverage/
+
+# Documents & Reports (Keep repo clean)
+*.pdf
+*.docx
+*.doc
+docs/report_assets/
+
+# Python caches
+__pycache__/
+*.py[cod]
