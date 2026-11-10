@@ -8,7 +8,7 @@ async function main() {
 
   const saltRounds = 10;
   const operatorPasswordHash = await bcrypt.hash(
-    process.env.OPERATOR_PASSWORD || "OperatorPass123!",
+    process.env.ADMIN_PASSWORD || process.env.OPERATOR_PASSWORD || "OperatorPass123!",
     saltRounds
   );
   const customerPasswordHash = await bcrypt.hash(
