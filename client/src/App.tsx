@@ -42,6 +42,9 @@ export function App() {
   const [orderQuantity, setOrderQuantity] = useState<{ [productId: string]: number }>({});
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [showCustomLogin, setShowCustomLogin] = useState<boolean>(false);
+  const [customEmail, setCustomEmail] = useState<string>("");
+  const [customPassword, setCustomPassword] = useState<string>("");
 
   // Quick switch role login for demo
   const loginAs = async (email: string, role: "CUSTOMER" | "OPERATOR") => {
@@ -66,6 +69,40 @@ export function App() {
         }
       } else {
         setMessage({ text: data.error?.message || "Login failed", type: "error" });
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message || "Network error", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Custom credentials login
+  const handleCustomLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customEmail || !customPassword) return;
+    setMessage(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: customEmail, password: customPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setToken(data.data.token);
+        setCurrentUser(data.data.user);
+        setMessage({ text: `Logged in as ${data.data.user.email} (${data.data.user.role})`, type: "success" });
+        if (data.data.user.role === "OPERATOR") {
+          setActiveTab("operator");
+        } else {
+          setActiveTab("catalog");
+        }
+        setShowCustomLogin(false);
+        setCustomPassword("");
+      } else {
+        setMessage({ text: data.error?.message || "Invalid email or password", type: "error" });
       }
     } catch (err: any) {
       setMessage({ text: err.message || "Network error", type: "error" });
@@ -204,18 +241,46 @@ export function App() {
       {/* Header with User Info and Quick Switcher */}
       <header className="header">
         <div>
-          <h1 className="header-title">🛒 CPE 334 E-Commerce System</h1>
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            Sprint 1: Issue #4 - Operator Order Management & Status Transitions
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h1 className="header-title">🛒 CPE 334 E-Commerce System</h1>
+            <span style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "2px 8px",
+              borderRadius: "12px",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              backgroundColor: "#dcfce7",
+              color: "#15803d",
+              border: "1px solid #bbf7d0"
+            }}>
+              <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#16a34a" }}></span>
+              Cloud Run Live
+            </span>
+          </div>
+          <p style={{ fontSize: "0.85rem", color: "#2563eb", fontWeight: 600, marginTop: "2px" }}>
+            🚀 Lab 5: Cloud Deployment &amp; CI/CD Pipeline (Episode 7 / Check C-06)
           </p>
         </div>
         <div className="auth-bar">
           {currentUser ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ fontSize: "0.9rem" }}>{currentUser.email}</span>
               <span className={`badge ${currentUser.role === "OPERATOR" ? "badge-operator" : "badge-customer"}`}>
                 {currentUser.role}
               </span>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                onClick={() => {
+                  setCurrentUser(null);
+                  setToken("");
+                  setMessage({ text: "Logged out successfully", type: "success" });
+                }}
+              >
+                Logout
+              </button>
             </div>
           ) : (
             <span>Not logged in</span>
@@ -225,6 +290,7 @@ export function App() {
               className="btn btn-secondary"
               onClick={() => loginAs("operator@store.com", "OPERATOR")}
               disabled={loading}
+              title="Quick demo login"
             >
               Login Operator
             </button>
@@ -235,9 +301,57 @@ export function App() {
             >
               Login Alice (Customer)
             </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowCustomLogin(!showCustomLogin)}
+              disabled={loading}
+              style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+            >
+              {showCustomLogin ? "Close Login" : "🔑 Login with Password"}
+            </button>
           </div>
         </div>
       </header>
+
+      {/* Custom Login Form */}
+      {showCustomLogin && (
+        <div style={{
+          backgroundColor: "#f8fafc",
+          border: "1px solid #cbd5e1",
+          borderRadius: "8px",
+          padding: "16px",
+          marginBottom: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px"
+        }}>
+          <h3 style={{ fontSize: "1rem", color: "#1e293b", margin: 0 }}>Enter Account Credentials</h3>
+          <form onSubmit={handleCustomLogin} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              type="email"
+              placeholder="Email (e.g. operator@store.com)"
+              value={customEmail}
+              onChange={(e) => setCustomEmail(e.target.value)}
+              required
+              style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", minWidth: "240px" }}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={customPassword}
+              onChange={(e) => setCustomPassword(e.target.value)}
+              required
+              style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", minWidth: "200px" }}
+            />
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? "Signing in..." : "Sign In"}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => setShowCustomLogin(false)}>
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Navigation Tabs */}
       <nav className="nav-tabs">
