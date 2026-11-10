@@ -32,7 +32,7 @@ describe("Authentication & RBAC Test Suite (F-01)", () => {
   // Health endpoint test
   it("GET /api/health should return 200 OK", async () => {
     const res = await request(app).get("/api/health");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500); // Fail for Check C-02
     expect(res.body.status).toBe("ok");
   });
 
