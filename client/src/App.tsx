@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { parseAndValidateQuantity } from "./utils/orderValidation";
 
 interface Product {
   id: string;
@@ -48,6 +49,8 @@ export function App() {
 
   // Quick switch role login for demo
   const loginAs = async (email: string, role: "CUSTOMER" | "OPERATOR") => {
+    setMyOrders([]);
+    setOperatorOrders([]);
     setMessage(null);
     setLoading(true);
     try {
@@ -81,6 +84,8 @@ export function App() {
   const handleCustomLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customEmail || !customPassword) return;
+    setMyOrders([]);
+    setOperatorOrders([]);
     setMessage(null);
     setLoading(true);
     try {
@@ -160,8 +165,6 @@ export function App() {
 
   useEffect(() => {
     loadProducts();
-    // Default login as Operator to showcase Issue #4
-    loginAs("operator@store.com", "OPERATOR");
   }, []);
 
   useEffect(() => {
@@ -176,7 +179,16 @@ export function App() {
       setMessage({ text: "Please log in to place an order.", type: "error" });
       return;
     }
-    const qty = orderQuantity[productId] || 1;
+    const rawQty = orderQuantity[productId] !== undefined ? orderQuantity[productId] : 1;
+    const validation = parseAndValidateQuantity(rawQty);
+    if (!validation.valid) {
+      setMessage({
+        text: `❌ Order rejected: ${validation.error}`,
+        type: "error",
+      });
+      return;
+    }
+    const qty = validation.quantity!;
     setMessage(null);
     setLoading(true);
     try {
@@ -276,6 +288,9 @@ export function App() {
                 onClick={() => {
                   setCurrentUser(null);
                   setToken("");
+                  setMyOrders([]);
+                  setOperatorOrders([]);
+                  setActiveTab("catalog");
                   setMessage({ text: "Logged out successfully", type: "success" });
                 }}
               >
@@ -481,13 +496,14 @@ export function App() {
                       <input
                         type="number"
                         min="1"
-                        value={qty}
-                        onChange={(e) =>
+                        value={orderQuantity[product.id] !== undefined ? orderQuantity[product.id] : 1}
+                        onChange={(e) => {
+                          const val = e.target.value;
                           setOrderQuantity({
                             ...orderQuantity,
-                            [product.id]: parseInt(e.target.value) || 1,
-                          })
-                        }
+                            [product.id]: val === "" ? ("" as any) : parseInt(val, 10),
+                          });
+                        }}
                         style={{
                           width: "60px",
                           padding: "6px 8px",
