@@ -49,6 +49,8 @@ export function App() {
 
   // Quick switch role login for demo
   const loginAs = async (email: string, role: "CUSTOMER" | "OPERATOR") => {
+    setMyOrders([]);
+    setOperatorOrders([]);
     setMessage(null);
     setLoading(true);
     try {
@@ -82,6 +84,8 @@ export function App() {
   const handleCustomLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customEmail || !customPassword) return;
+    setMyOrders([]);
+    setOperatorOrders([]);
     setMessage(null);
     setLoading(true);
     try {
@@ -161,8 +165,6 @@ export function App() {
 
   useEffect(() => {
     loadProducts();
-    // Default login as Operator to showcase Issue #4
-    loginAs("operator@store.com", "OPERATOR");
   }, []);
 
   useEffect(() => {
@@ -286,6 +288,9 @@ export function App() {
                 onClick={() => {
                   setCurrentUser(null);
                   setToken("");
+                  setMyOrders([]);
+                  setOperatorOrders([]);
+                  setActiveTab("catalog");
                   setMessage({ text: "Logged out successfully", type: "success" });
                 }}
               >

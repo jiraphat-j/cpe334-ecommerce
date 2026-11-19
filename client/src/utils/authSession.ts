@@ -7,34 +7,47 @@ export interface UserSessionState {
 }
 
 /**
- * Baseline representing current defective behavior in App.tsx prior to Issue #27 fix
+ * Clean unauthenticated initial state (Guest mode)
+ * Security rule: Guest users start with no elevated privilege or order history.
  */
 export function getInitialAuthState(): UserSessionState {
-  // Defect: App.tsx automatically logged in operator on mount
   return {
-    currentUser: { id: "op-1", email: "operator@store.com", role: "OPERATOR" },
-    token: "mock-operator-token",
-    activeTab: "operator",
+    currentUser: null,
+    token: "",
+    activeTab: "catalog",
     myOrders: [],
     operatorOrders: [],
   };
 }
 
+/**
+ * Security policy check: Never auto-login as privileged operator on initial load
+ */
 export function shouldAutoLoginPrivilegedOnLoad(): boolean {
-  // Defect: useEffect called loginAs("operator@store.com", "OPERATOR")
-  return true;
+  return false;
 }
 
+/**
+ * Resets all session state, tokens, and cached orders upon logout
+ */
 export function resetSessionOnLogout(state: UserSessionState): UserSessionState {
-  // Defect: App.tsx only cleared currentUser and token, leaking orders
   return {
     ...state,
     currentUser: null,
     token: "",
+    activeTab: "catalog",
+    myOrders: [],
+    operatorOrders: [],
   };
 }
 
+/**
+ * Purges prior user's orders from memory when switching accounts
+ */
 export function clearOrdersOnAccountSwitch<T extends { myOrders: any[]; operatorOrders: any[] }>(state: T): T {
-  // Defect: App.tsx did not reset myOrders when logging in as another user
-  return state;
+  return {
+    ...state,
+    myOrders: [],
+    operatorOrders: [],
+  };
 }
