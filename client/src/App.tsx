@@ -432,11 +432,11 @@ export function App() {
                     <td>
                       {order.items.map((i) => (
                         <div key={i.id}>
-                          {i.product?.name || "Product"} × {i.quantity} (${i.unit_price.toFixed(2)})
+                          {i.product?.name || "Product"} × {i.quantity} (฿{i.unit_price.toLocaleString()})
                         </div>
                       ))}
                     </td>
-                    <td style={{ fontWeight: 600 }}>${order.total_amount.toFixed(2)}</td>
+                    <td style={{ fontWeight: 600 }}>฿{order.total_amount.toLocaleString()}</td>
                     <td>
                       <span className={`status-badge status-${order.status}`}>{order.status}</span>
                     </td>
@@ -491,7 +491,7 @@ export function App() {
                     </span>
                   </div>
                   <div className="card-footer">
-                    <div className="price">${product.price.toFixed(2)}</div>
+                    <div className="price">฿{product.price.toLocaleString()}</div>
                     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       <input
                         type="number"
@@ -552,11 +552,11 @@ export function App() {
                     <td>
                       {order.items.map((i) => (
                         <div key={i.id}>
-                          {i.product?.name || "Product"} × {i.quantity} (${i.unit_price.toFixed(2)})
+                          {i.product?.name || "Product"} × {i.quantity} (฿{i.unit_price.toLocaleString()})
                         </div>
                       ))}
                     </td>
-                    <td style={{ fontWeight: 600 }}>${order.total_amount.toFixed(2)}</td>
+                    <td style={{ fontWeight: 600 }}>฿{order.total_amount.toLocaleString()}</td>
                     <td>
                       <span className={`status-badge status-${order.status}`}>{order.status}</span>
                     </td>
