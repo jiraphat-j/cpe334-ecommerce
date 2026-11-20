@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import appSource from "./App.tsx?raw";
 import { parseAndValidateQuantity } from "./utils/orderValidation";
 import {
   getInitialAuthState,
@@ -67,5 +68,16 @@ describe("UAT Defect Issue #27: Security Vulnerability & State Reset (Issue A03)
     const switchedSession = clearOrdersOnAccountSwitch(aliceSession);
     expect(switchedSession.myOrders).toEqual([]);
     expect(switchedSession.myOrders.length).toBe(0);
+  });
+
+  it("TEST-A03-04: should not contain hardcoded passwords or credentials in client App.tsx", () => {
+    expect(appSource.includes("OperatorPass123!")).toBe(false);
+    expect(appSource.includes("CustomerPass123!")).toBe(false);
+  });
+
+  it("TEST-A03-05: should not contain demo quick-login switcher or loginAs function in App.tsx", () => {
+    expect(appSource.includes("loginAs")).toBe(false);
+    expect(appSource.includes("Login Operator")).toBe(false);
+    expect(appSource.includes("Login Alice")).toBe(false);
   });
 });

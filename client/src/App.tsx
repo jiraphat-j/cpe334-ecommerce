@@ -47,40 +47,7 @@ export function App() {
   const [customEmail, setCustomEmail] = useState<string>("");
   const [customPassword, setCustomPassword] = useState<string>("");
 
-  // Quick switch role login for demo
-  const loginAs = async (email: string, role: "CUSTOMER" | "OPERATOR") => {
-    setMyOrders([]);
-    setOperatorOrders([]);
-    setMessage(null);
-    setLoading(true);
-    try {
-      const password = role === "OPERATOR" ? "OperatorPass123!" : "CustomerPass123!";
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setToken(data.data.token);
-        setCurrentUser(data.data.user);
-        setMessage({ text: `Logged in as ${data.data.user.email} (${data.data.user.role})`, type: "success" });
-        if (role === "OPERATOR") {
-          setActiveTab("operator");
-        } else {
-          setActiveTab("catalog");
-        }
-      } else {
-        setMessage({ text: data.error?.message || "Login failed", type: "error" });
-      }
-    } catch (err: any) {
-      setMessage({ text: err.message || "Network error", type: "error" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Custom credentials login
+  // Custom credentials login (AC-01, AC-02)
   const handleCustomLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customEmail || !customPassword) return;
@@ -298,33 +265,18 @@ export function App() {
               </button>
             </div>
           ) : (
-            <span>Not logged in</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span>Not logged in</span>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowCustomLogin(!showCustomLogin)}
+                disabled={loading}
+                style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+              >
+                {showCustomLogin ? "Close Login" : "🔑 Login with Password"}
+              </button>
+            </div>
           )}
-          <div style={{ display: "flex", gap: "6px" }}>
-            <button
-              className="btn btn-secondary"
-              onClick={() => loginAs("operator@store.com", "OPERATOR")}
-              disabled={loading}
-              title="Quick demo login"
-            >
-              Login Operator
-            </button>
-            <button
-              className="btn btn-secondary"
-              onClick={() => loginAs("alice@customer.com", "CUSTOMER")}
-              disabled={loading}
-            >
-              Login Alice (Customer)
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => setShowCustomLogin(!showCustomLogin)}
-              disabled={loading}
-              style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-            >
-              {showCustomLogin ? "Close Login" : "🔑 Login with Password"}
-            </button>
-          </div>
         </div>
       </header>
 
