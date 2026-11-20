@@ -7,14 +7,12 @@ async function main() {
   console.log("Seeding baseline data for E-Commerce Ordering System...");
 
   const saltRounds = 10;
-  const operatorPasswordHash = await bcrypt.hash(
-    process.env.ADMIN_PASSWORD || process.env.OPERATOR_PASSWORD || "OperatorPass123!",
-    saltRounds
-  );
-  const customerPasswordHash = await bcrypt.hash(
-    process.env.DEMO_USER_PASSWORD || "CustomerPass123!",
-    saltRounds
-  );
+  // Explicitly ensure operator@store.com uses the agreed testing password "OperatorPass123!"
+  const operatorPassword = "OperatorPass123!";
+  const operatorPasswordHash = await bcrypt.hash(operatorPassword, saltRounds);
+
+  const customerPassword = process.env.DEMO_USER_PASSWORD || "CustomerPass123!";
+  const customerPasswordHash = await bcrypt.hash(customerPassword, saltRounds);
 
   // 1. Seed Operator
   const operator = await prisma.user.upsert({
@@ -50,27 +48,27 @@ async function main() {
   });
   console.log(`Seeded Customers: ${customerAlice.email}, ${customerBob.email}`);
 
-  // 3. Seed Products
+  // 3. Seed Products (Sprint 1 Contract: 1500 THB for Mechanical Keyboard)
   const products = [
     {
       id: "prod-keyboard-01",
       name: "Mechanical Keyboard RGB",
       description: "Custom mechanical keyboard with tactile brown switches",
-      price: 129.99,
+      price: 1500.0,
       stock: 10,
     },
     {
       id: "prod-mouse-02",
       name: "Ergonomic Gaming Mouse",
       description: "Wireless high-precision 16000 DPI gaming mouse",
-      price: 59.99,
+      price: 800.0,
       stock: 25,
     },
     {
       id: "prod-cable-03",
       name: "Braided USB-C Cable 2M",
       description: "Durable fast charging 100W PD nylon braided cable",
-      price: 14.99,
+      price: 200.0,
       stock: 50,
     },
   ];
@@ -82,7 +80,7 @@ async function main() {
         name: item.name,
         description: item.description,
         price: item.price,
-        stock: item.stock,
+        // Do NOT overwrite existing stock on update to preserve transaction history & persistence (AC-04)
       },
       create: item,
     });
