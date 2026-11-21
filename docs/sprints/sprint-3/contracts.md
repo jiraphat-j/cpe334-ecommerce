@@ -84,13 +84,19 @@ In the Customer "My Orders" view (`/orders`), each order row with status `PENDIN
      - Displays notice: "Awaiting payment confirmation... Please do not close this window."
      - The client polls `GET /api/orders/:id/payment` every 2 seconds to detect payment settlement.
 3. **Runnable Simulated Gateway Controls (Testing & Dev Mode):**
-   - In development and automated test modes, the modal exposes two interactive testing actions: **"Simulate Gateway Success"** and **"Simulate Gateway Failure"**.
-   - Clicking either action extracts the current session parameters (`sessionId`, `orderId`, `amount`, `currency`) and dispatches `POST /api/webhooks/payment` with the configured `PAYMENT_WEBHOOK_SECRET`.
-   - Automated integration tests dispatch this webhook directly to drive deterministic backend transitions.
+   - **Zero Client Secrets (NFR-04):** Neither the browser bundle nor browser network requests ever contain or transmit `PAYMENT_WEBHOOK_SECRET`.
+   - In development / test environments (`NODE_ENV !== 'production'`), the modal exposes two interactive testing actions: **"Simulate Gateway Success"** and **"Simulate Gateway Failure"**.
+   - Clicking either action calls an authenticated, dev-only backend endpoint: `POST /api/orders/:id/simulate-payment` with `{ "outcome": "SUCCESS" | "FAILED" }`.
+   - The backend validates the caller's session and order ownership, constructs the callback payload, signs it with the server's private `PAYMENT_WEBHOOK_SECRET`, and dispatches it directly to `POST /api/webhooks/payment` server-side.
+   - In production builds (`NODE_ENV === 'production'`), simulation controls are disabled / excluded from the UI, and the dev simulator route returns 404.
+   - Automated integration tests drive `POST /api/webhooks/payment` directly from the test runner using the server environment secret.
 4. **Outcome States & Polling Termination:**
-   - **On SUCCESS callback:** Polling detects `status: "SUCCESS"`. Polling ceases immediately. The modal displays a green checkmark: "Payment Successful! Your order has been confirmed." After 1.5 seconds, the modal auto-dismisses. In the My Orders table, the order badge updates to `CONFIRMED`, "Pay" and "Cancel Order" buttons disappear, and "View Timeline" immediately reflects the payment confirmation transition (`PENDING` -> `CONFIRMED`).
-   - **On FAILED callback:** Polling detects `status: "FAILED"`. Polling ceases immediately. The modal shows an error alert: "Payment authorization failed. Your order has been cancelled and items returned to stock." A "Close" button allows dismissing the modal. The order status updates to `CANCELLED`.
-   - **On REFUND_REQUIRED (Late Callback):** Polling detects `status: "REFUND_REQUIRED"`. Polling ceases immediately. The modal displays: "Order was cancelled prior to payment completion. Your payment has been received and queued for automatic refund." The modal closes and the order reflects `CANCELLED (Refund Queued)`.
+   - The client polls `GET /api/orders/:id/payment` and `GET /api/orders/:id` every 2 seconds to inspect both payment settlement and order progression.
+   - **On SUCCESS callback:** Polling detects `status: "SUCCESS"`. Polling ceases immediately. The modal displays a green checkmark: "Payment Successful! Your order has been confirmed." After 1.5 seconds, the modal auto-dismisses. In the My Orders table, the order badge updates to `CONFIRMED` (or reflects `SHIPPED` if already dispatched), "Pay" and "Cancel Order" buttons disappear, and "View Timeline" immediately reflects the payment confirmation transition (`PENDING` -> `CONFIRMED`).
+   - **On FAILED callback:** Polling detects `status: "FAILED"`. Polling ceases immediately.
+     - **If order was cancelled (`order.status === "CANCELLED"`):** Modal displays: "Payment authorization failed. Your order has been cancelled and items returned to stock." A "Close" button allows dismissing the modal. The order status updates to `CANCELLED`.
+     - **If order remains confirmed (`order.status === "CONFIRMED"`):** Modal displays: "Payment authorization failed, but your order was already confirmed by an Operator. Please contact support or retry payment." Order remains `CONFIRMED` and stock is NOT returned.
+   - **On REFUND_REQUIRED (Late Callback):** Polling detects `status: "REFUND_REQUIRED"`. Polling ceases immediately. The modal displays: "Order was cancelled prior to payment completion. Your payment has been received and flagged for refund." The modal closes and the order reflects `CANCELLED (Refund Flagged)`.
    - **On Timeout (5 Minutes):** If polling runs for 5 minutes without settlement, polling ceases. The modal displays: "Payment session timed out. If you were charged, your order status will update automatically. You can retry payment from My Orders." A "Close" button dismisses the modal while the order remains `PENDING`.
    - **On Modal Dismissal without payment:** The customer can close the modal before payment authorization. The order remains `PENDING` and unpaid; the "Pay" button remains available.
 
@@ -182,8 +188,9 @@ In the Customer "My Orders" view (`/orders`), each order row with status `PENDIN
 | `CONFIRMED` (Operator) | `PENDING` | `FAILED` | `FAILED` (`gatewayRef`) | `CONFIRMED` (unchanged) | None | 0 (Operator confirmed order) | 409 `ORDER_ALREADY_CONFIRMED` |
 | `CONFIRMED` | `SUCCESS` | `SUCCESS` (new evt) | `SUCCESS` (preserved) | `CONFIRMED` (unchanged) | None | 0 | 200 OK (settled receipt) |
 | `CONFIRMED` | `SUCCESS` | `FAILED` (new evt) | `SUCCESS` (immutable) | `CONFIRMED` (unchanged) | None | 0 | 409 `PAYMENT_ALREADY_SETTLED` |
-| `SHIPPED` | Any | `SUCCESS` (new evt) | Preserved | `SHIPPED` (unchanged) | None | 0 | 200 OK |
-| `SHIPPED` | Any | `FAILED` (new evt) | Preserved | `SHIPPED` (unchanged) | None | 0 (goods already in transit) | 409 `ORDER_ALREADY_SHIPPED` |
+| `SHIPPED` | `PENDING` | `SUCCESS` | `SUCCESS` (`gatewayRef`) | `SHIPPED` (unchanged) | None | 0 | 200 OK |
+| `SHIPPED` | `PENDING` | `FAILED` | `FAILED` (`gatewayRef`) | `SHIPPED` (unchanged) | None | 0 (goods already dispatched) | 409 `ORDER_ALREADY_SHIPPED` |
+| `SHIPPED` | `SUCCESS` | Any (new evt) | `SUCCESS` (immutable) | `SHIPPED` (unchanged) | None | 0 | 200 OK (settled receipt) |
 | `CANCELLED` | `PENDING` | `SUCCESS` (late) | `REFUND_REQUIRED` | `CANCELLED` (unchanged) | None | 1 if `stock_restored == false`; 0 if `true` | 409 `ORDER_ALREADY_CANCELLED` |
 | `CANCELLED` | `PENDING` | `FAILED` | `FAILED` | `CANCELLED` (unchanged) | None | 1 if `stock_restored == false`; 0 if `true` | 200 OK |
 | `CANCELLED` | `REFUND_REQUIRED` | `FAILED` (new evt) | `REFUND_REQUIRED` (immutable) | `CANCELLED` (unchanged) | None | 0 | 200 OK |
@@ -274,21 +281,12 @@ model PaymentWebhookEvent {
 | AC-F09-07 / TEST-F09-07 | API/DB: Replay deduplication rules. Replaying any already-processed `eventId` immediately returns 200 `{ duplicate: true }` without database mutations. Replaying an `eventId` whose original run returned 409 (late callback on cancelled order) also acknowledges with 200. |
 | AC-F09-08 / TEST-F09-08 | API/DB: Webhook callback on Operator-confirmed order. When order was already confirmed by Operator, a `SUCCESS` callback updates payment to `SUCCESS` (200) without duplicate timeline events. A `FAILED` callback updates payment to `FAILED` and returns 409 `ORDER_ALREADY_CONFIRMED` leaving the order `CONFIRMED`. |
 | AC-F09-09 / TEST-F09-09 | API/DB: Late webhook `SUCCESS` on customer-cancelled order. Updates `PaymentTransaction` status to `REFUND_REQUIRED`, preserves order `CANCELLED` status and restored stock, records `PaymentWebhookEvent`, and returns 409 `ORDER_ALREADY_CANCELLED`. |
-| AC-F09-10 / TEST-F09-10 | UI/E2E: Customer payment workflow in My Orders. Displays "Pay" button only for `PENDING` orders. Launches modal to select `PROMPTPAY` vs `CREDIT_CARD`. Shows processing state while polling `GET /api/orders/:id/payment`. Exposes dev test triggers ("Simulate Success" / "Simulate Failure"). Polling terminates on SUCCESS, FAILED, REFUND_REQUIRED, or 5-minute timeout with appropriate user feedback. |
+| AC-F09-10 / TEST-F09-10 | UI/E2E: Customer payment workflow in My Orders. Displays "Pay" button only for `PENDING` orders. Launches modal to select `PROMPTPAY` vs `CREDIT_CARD`. Shows processing state while polling `GET /api/orders/:id/payment` and `GET /api/orders/:id`. Client bundle and browser requests contain zero webhook secrets (NFR-04). In dev/test mode, modal uses authenticated dev-only endpoint `POST /api/orders/:id/simulate-payment` to dispatch server-side callbacks; disabled in production. Polling inspects payment and order state: on SUCCESS, displays green confirmation; on FAILED for cancelled order, displays cancellation and stock return; on FAILED for Operator-confirmed order, displays operator-confirmed failure without false cancellation/stock message; on REFUND_REQUIRED, displays flagged for refund; on 5-minute timeout, terminates with retry option. |
 | AC-F09-11 / TEST-F09-11 | API/DB (PostgreSQL): Concurrent webhook replay race. Two simultaneous requests with identical `eventId` execute; unique constraint collision on `PaymentWebhookEvent(eventId)` is caught and the losing request returns 200 `{ duplicate: true }` with zero duplicate mutations. |
 | AC-F09-12 / TEST-F09-12 | API/DB (PostgreSQL): Webhook callback racing with F-07 customer cancellation. Competing requests serialize on the order's atomic guard/lock. When `SUCCESS` callback wins, order transitions to `CONFIRMED`, cancellation receives HTTP 409 `INVALID_TRANSITION`, and zero stock restoration occurs. When cancellation wins against `SUCCESS`, order transitions to `CANCELLED` and restores stock once, and callback sets `REFUND_REQUIRED` with 409 and zero additional restoration (total: 1 restoration). When `FAILED` callback races with cancellation, whichever wins cancels the order and restores stock once; the loser receives HTTP 409 `INVALID_TRANSITION` (cancellation) or 200 (callback Path E) with zero additional restoration (total: 1 restoration). |
 | AC-F09-13 / TEST-F09-13 | API/DB: Settled payment state preservation. When payment is `REFUND_REQUIRED`, a subsequent `FAILED` event with distinct `eventId` preserves `REFUND_REQUIRED` (does not overwrite to `FAILED`), leaves stock untouched, and returns 200. When payment is settled `SUCCESS`, a subsequent `FAILED` callback returns 409 `PAYMENT_ALREADY_SETTLED` without corrupting payment or order state. |
 | AC-F09-14 / TEST-F09-14 | API/DB (PostgreSQL): Operator-cancelled order stock handling & transaction rollback. When a late callback arrives for an order cancelled by an Operator (`stock_restored == false`), the transaction restores stock for all order items once and sets `stock_restored = true`. If stock restoration encounters an unhandled error, the entire transaction rolls back completely (zero mutations) and returns 500. |
-| AC-F09-15 / TEST-F09-15 | API/DB: Webhook callback on `SHIPPED` order. A `SUCCESS` callback on an order already `SHIPPED` acknowledges with 200 without mutating order state. A `FAILED` callback on a `SHIPPED` order returns 409 `ORDER_ALREADY_SHIPPED` and mutates neither order status nor inventory stock. |
-
-### Final Delivery implementation and verification plan
-
-This specification establishes the complete contract for the remaining Sprint 3 baseline scope.
-Full implementation, automated test suites (unit mock + live PostgreSQL integration), and UI payment modal are scheduled for Final Delivery:
-- **Owner:** @thanapornboont-star
-- **Target completion date:** 13 December 2026 (Final Delivery Milestone)
-- **Dependencies:** OrderItems schema (F-06), status cancellation logic (F-07), and order timeline event logging (F-08).
-- **Execution evidence:** Linked to Final Delivery feature Issue upon completion.
+| AC-F09-15 / TEST-F09-15 | API/DB: Webhook callback on `SHIPPED` order. When order is `SHIPPED` with `PENDING` payment, a `SUCCESS` callback transitions payment status to `SUCCESS` (`gatewayRef`), leaves order `SHIPPED`, mutates no stock, and returns 200. A `FAILED` callback on a `SHIPPED` order transitions payment to `FAILED`, leaves order `SHIPPED`, mutates no stock, and returns 409 `ORDER_ALREADY_SHIPPED`. |
 
 ### Final Delivery implementation and verification plan
 
