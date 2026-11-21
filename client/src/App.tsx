@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { parseAndValidateQuantity } from "./utils/orderValidation";
+import { OperatorProducts } from "./OperatorProducts";
 
 interface Product {
   id: string;
@@ -36,11 +37,12 @@ interface User {
 export function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [token, setToken] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"catalog" | "my-orders" | "operator">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "cart" | "my-orders" | "operator" | "operator-products">("catalog");
   const [products, setProducts] = useState<Product[]>([]);
   const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [operatorOrders, setOperatorOrders] = useState<Order[]>([]);
   const [orderQuantity, setOrderQuantity] = useState<{ [productId: string]: number }>({});
+  const [cart, setCart] = useState<{ [productId: string]: number }>({});
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [showCustomLogin, setShowCustomLogin] = useState<boolean>(false);
@@ -179,9 +181,156 @@ export function App() {
           text: `❌ Order rejected: ${data.error?.message || "Unknown error"}`,
           type: "error",
         });
+        if (data.error?.code === "PRODUCT_ARCHIVED") await loadProducts();
       }
     } catch (err: any) {
       setMessage({ text: err.message || "Failed to place order", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cart operations (F-06, AC-F06-01 to AC-F06-04)
+  const addToCart = (productId: string) => {
+    const rawQty = orderQuantity[productId] !== undefined ? orderQuantity[productId] : 1;
+    const validation = parseAndValidateQuantity(rawQty);
+    if (!validation.valid) {
+      setMessage({ text: `❌ Cannot add to cart: ${validation.error}`, type: "error" });
+      return;
+    }
+    const qty = validation.quantity!;
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+
+    const currentCartQty = cart[productId] || 0;
+    const newQty = currentCartQty + qty;
+
+    if (newQty > product.stock) {
+      setMessage({
+        text: `❌ Cannot add ${qty} more. You already have ${currentCartQty} in cart, available stock is ${product.stock}.`,
+        type: "error",
+      });
+      return;
+    }
+
+    setCart({ ...cart, [productId]: newQty });
+    setMessage({
+      text: `🛒 Added ${qty} × ${product.name} to cart.`,
+      type: "success",
+    });
+  };
+
+  const updateCartQuantity = (productId: string, newQty: number) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+
+    if (newQty <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+
+    if (newQty > product.stock) {
+      setMessage({
+        text: `❌ Cannot set to ${newQty}. Available stock for ${product.name} is ${product.stock}.`,
+        type: "error",
+      });
+      return;
+    }
+
+    setCart({ ...cart, [productId]: newQty });
+  };
+
+  const removeFromCart = (productId: string) => {
+    const updated = { ...cart };
+    delete updated[productId];
+    setCart(updated);
+  };
+
+  const clearCart = () => {
+    setCart({});
+  };
+
+  const handleCheckoutCart = async () => {
+    if (!token) {
+      setMessage({ text: "Please log in to place an order.", type: "error" });
+      return;
+    }
+
+    const unavailableItems = Object.keys(cart).filter((id) => !products.some((p) => p.id === id && p.stock > 0));
+    if (unavailableItems.length > 0) {
+      setMessage({
+        text: "❌ Please remove unavailable or archived items from your cart before checking out.",
+        type: "error",
+      });
+      return;
+    }
+
+    const items = Object.entries(cart)
+      .filter(([_, qty]) => qty > 0)
+      .map(([productId, quantity]) => ({ productId, quantity }));
+
+    if (items.length === 0) {
+      setMessage({ text: "Your cart is empty.", type: "error" });
+      return;
+    }
+
+    setMessage(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ items }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessage({
+          text: `🎉 Order placed successfully! Order ID: ${data.data.order.id}. Total: ฿${data.data.order.total_amount.toLocaleString()}`,
+          type: "success",
+        });
+        clearCart();
+        await loadProducts();
+        await loadMyOrders();
+        setActiveTab("my-orders");
+      } else {
+        setMessage({
+          text: `❌ Checkout rejected: ${data.error?.message || "Unknown error"}`,
+          type: "error",
+        });
+        if (data.error?.code === "PRODUCT_ARCHIVED" || data.error?.code === "INSUFFICIENT_STOCK") {
+          await loadProducts();
+        }
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message || "Failed to process checkout", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelOrder = async (orderId: string) => {
+    if (!token || loading || !window.confirm("Cancel this order?")) return;
+    setMessage(null);
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/cancel`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setMessage({ text: "Order cancelled.", type: "success" });
+        await Promise.all([loadMyOrders(), loadProducts()]);
+      } else {
+        setMessage({ text: data.error?.message ?? "Failed to cancel order.", type: "error" });
+        if (response.status === 409) await loadMyOrders();
+      }
+    } catch {
+      setMessage({ text: "Could not reach the server. Check your order history before retrying.", type: "error" });
+      await loadMyOrders();
     } finally {
       setLoading(false);
     }
@@ -207,6 +356,7 @@ export function App() {
         await loadOperatorOrders();
       } else {
         setMessage({ text: `❌ Status update failed: ${data.error?.message || "Unknown error"}`, type: "error" });
+        if (res.status === 409) await loadOperatorOrders();
       }
     } catch (err: any) {
       setMessage({ text: err.message || "Network error", type: "error" });
@@ -257,6 +407,7 @@ export function App() {
                   setToken("");
                   setMyOrders([]);
                   setOperatorOrders([]);
+                  setCart({});
                   setActiveTab("catalog");
                   setMessage({ text: "Logged out successfully", type: "success" });
                 }}
@@ -330,12 +481,28 @@ export function App() {
             Operator Order Management ({operatorOrders.length})
           </button>
         )}
+        {currentUser?.role === "OPERATOR" && (
+          <button
+            className={`tab-btn ${activeTab === "operator-products" ? "active" : ""}`}
+            onClick={() => setActiveTab("operator-products")}
+          >
+            Product Management
+          </button>
+        )}
         <button
           className={`tab-btn ${activeTab === "catalog" ? "active" : ""}`}
           onClick={() => setActiveTab("catalog")}
         >
           Product Catalog & Buy
         </button>
+        {currentUser?.role === "CUSTOMER" && (
+          <button
+            className={`tab-btn ${activeTab === "cart" ? "active" : ""}`}
+            onClick={() => setActiveTab("cart")}
+          >
+            🛒 Cart ({Object.values(cart).reduce((a, b) => a + b, 0)})
+          </button>
+        )}
         {currentUser?.role === "CUSTOMER" && (
           <button
             className={`tab-btn ${activeTab === "my-orders" ? "active" : ""}`}
@@ -351,6 +518,10 @@ export function App() {
         <div className={`alert ${message.type === "success" ? "alert-success" : "alert-error"}`}>
           {message.text}
         </div>
+      )}
+
+      {activeTab === "operator-products" && currentUser?.role === "OPERATOR" && (
+        <OperatorProducts token={token} />
       )}
 
       {/* TAB 1: Operator Order Management Board */}
@@ -444,7 +615,7 @@ export function App() {
                   </div>
                   <div className="card-footer">
                     <div className="price">฿{product.price.toLocaleString()}</div>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                       <input
                         type="number"
                         min="1"
@@ -457,18 +628,29 @@ export function App() {
                           });
                         }}
                         style={{
-                          width: "60px",
+                          width: "50px",
                           padding: "6px 8px",
                           borderRadius: "4px",
                           border: "1px solid var(--border)",
                         }}
                       />
+                      {currentUser?.role === "CUSTOMER" && (
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => addToCart(product.id)}
+                          disabled={loading || product.stock <= 0}
+                          style={{ padding: "6px 10px", fontSize: "0.8rem" }}
+                        >
+                          + Cart
+                        </button>
+                      )}
                       <button
                         className="btn btn-primary"
                         onClick={() => handlePlaceOrder(product.id)}
                         disabled={loading || product.stock <= 0}
+                        style={{ padding: "6px 10px", fontSize: "0.8rem" }}
                       >
-                        Buy
+                        Buy Now
                       </button>
                     </div>
                   </div>
@@ -476,6 +658,120 @@ export function App() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* TAB: Shopping Cart (F-06 Multi-item Checkout) */}
+      {activeTab === "cart" && currentUser?.role === "CUSTOMER" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Shopping Cart ({Object.values(cart).reduce((a, b) => a + b, 0)} items)</h2>
+            {Object.keys(cart).length > 0 && (
+              <button className="btn btn-secondary" onClick={clearCart} style={{ fontSize: "0.8rem", padding: "4px 8px" }}>
+                Clear Cart
+              </button>
+            )}
+          </div>
+          {Object.keys(cart).length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)", backgroundColor: "#fff", borderRadius: "8px", border: "1px solid var(--border)" }}>
+              <p style={{ fontSize: "1.1rem", marginBottom: "12px" }}>🛒 Your cart is empty.</p>
+              <button className="btn btn-primary" onClick={() => setActiveTab("catalog")}>
+                Browse Products
+              </button>
+            </div>
+          ) : (
+            <div style={{ backgroundColor: "#fff", borderRadius: "8px", border: "1px solid var(--border)", overflow: "hidden" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Price</th>
+                    <th>Quantity</th>
+                    <th>Subtotal</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(cart).map(([productId, quantity]) => {
+                    const product = products.find((p) => p.id === productId);
+                    const isAvailable = product !== undefined && product.stock > 0;
+                    const name = product?.name || `Product (${productId})`;
+                    const price = product?.price || 0;
+                    const subtotal = price * quantity;
+                    return (
+                      <tr key={productId} style={!isAvailable ? { backgroundColor: "#fef2f2" } : undefined}>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{name}</div>
+                          {!isAvailable && (
+                            <span style={{ fontSize: "0.75rem", color: "var(--danger)", fontWeight: 600 }}>
+                              ⚠️ Unavailable / Archived — Please remove
+                            </span>
+                          )}
+                        </td>
+                        <td>{isAvailable ? `฿${price.toLocaleString()}` : <span style={{ color: "var(--danger)", fontWeight: 600 }}>Unavailable</span>}</td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: "2px 8px", fontSize: "0.8rem" }}
+                              onClick={() => updateCartQuantity(productId, quantity - 1)}
+                            >
+                              -
+                            </button>
+                            <span style={{ minWidth: "24px", textAlign: "center", fontWeight: 600 }}>{quantity}</span>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: "2px 8px", fontSize: "0.8rem" }}
+                              onClick={() => updateCartQuantity(productId, quantity + 1)}
+                              disabled={!isAvailable || quantity >= product.stock}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{isAvailable ? `฿${subtotal.toLocaleString()}` : "-"}</td>
+                        <td>
+                          <button
+                            className="btn btn-danger"
+                            style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                            onClick={() => removeFromCart(productId)}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div style={{ padding: "16px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "#f8fafc" }}>
+                <div>
+                  <span style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Total Amount: </span>
+                  <span style={{ fontSize: "1.4rem", fontWeight: 700, color: "#1e293b", marginLeft: "8px" }}>
+                    ฿{Object.entries(cart).reduce((sum, [pId, q]) => {
+                      const p = products.find((prod) => prod.id === pId);
+                      return sum + (p && p.stock > 0 ? p.price * q : 0);
+                    }, 0).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+                  {Object.keys(cart).some((id) => !products.some((p) => p.id === id && p.stock > 0)) && (
+                    <span style={{ color: "var(--danger)", fontSize: "0.85rem", fontWeight: 600 }}>
+                      ⚠️ Remove unavailable items before checkout
+                    </span>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    style={{ padding: "10px 20px", fontSize: "1rem", fontWeight: 600 }}
+                    onClick={handleCheckoutCart}
+                    disabled={loading || Object.keys(cart).some((id) => !products.some((p) => p.id === id && p.stock > 0))}
+                  >
+                    {loading ? "Processing Order..." : "Place Order (Checkout)"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -494,6 +790,7 @@ export function App() {
                   <th>Items</th>
                   <th>Total Amount</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -511,6 +808,14 @@ export function App() {
                     <td style={{ fontWeight: 600 }}>฿{order.total_amount.toLocaleString()}</td>
                     <td>
                       <span className={`status-badge status-${order.status}`}>{order.status}</span>
+                    </td>
+                    <td>
+                      {order.status === "PENDING" && (
+                        <button className="btn btn-danger" type="button" disabled={loading}
+                          onClick={() => handleCancelOrder(order.id)}>
+                          Cancel Order
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
