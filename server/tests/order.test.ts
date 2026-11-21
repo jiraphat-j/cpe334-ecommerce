@@ -85,7 +85,7 @@ describe("Issue #3: Product Catalog & Customer Order Workflow (F-02, F-03)", () 
       return callback({
         product: {
           findUnique: vi.fn().mockResolvedValue(mockProduct),
-          update: vi.fn().mockResolvedValue({ ...mockProduct, stock: 8 }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         order: {
           create: vi.fn().mockResolvedValue(mockOrder),
@@ -118,6 +118,7 @@ describe("Issue #3: Product Catalog & Customer Order Workflow (F-02, F-03)", () 
       return callback({
         product: {
           findUnique: vi.fn().mockResolvedValue(mockProduct),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
       });
     });

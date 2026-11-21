@@ -73,19 +73,8 @@ async function main() {
     },
   ];
 
-  for (const item of products) {
-    await prisma.product.upsert({
-      where: { id: item.id },
-      update: {
-        name: item.name,
-        description: item.description,
-        price: item.price,
-        // Do NOT overwrite existing stock on update to preserve transaction history & persistence (AC-04)
-      },
-      create: item,
-    });
-  }
-  console.log(`Seeded ${products.length} catalog products.`);
+  const { count } = await prisma.product.createMany({ data: products, skipDuplicates: true });
+  console.log(`Inserted ${count} missing catalog products.`);
   console.log("Seeding complete.");
 }
 

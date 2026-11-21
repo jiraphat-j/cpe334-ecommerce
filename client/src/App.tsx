@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { parseAndValidateQuantity } from "./utils/orderValidation";
+import { OperatorProducts } from "./OperatorProducts";
 
 interface Product {
   id: string;
@@ -36,7 +37,7 @@ interface User {
 export function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [token, setToken] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"catalog" | "my-orders" | "operator">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "my-orders" | "operator" | "operator-products">("catalog");
   const [products, setProducts] = useState<Product[]>([]);
   const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [operatorOrders, setOperatorOrders] = useState<Order[]>([]);
@@ -179,6 +180,7 @@ export function App() {
           text: `❌ Order rejected: ${data.error?.message || "Unknown error"}`,
           type: "error",
         });
+        if (data.error?.code === "PRODUCT_ARCHIVED") await loadProducts();
       }
     } catch (err: any) {
       setMessage({ text: err.message || "Failed to place order", type: "error" });
@@ -330,6 +332,14 @@ export function App() {
             Operator Order Management ({operatorOrders.length})
           </button>
         )}
+        {currentUser?.role === "OPERATOR" && (
+          <button
+            className={`tab-btn ${activeTab === "operator-products" ? "active" : ""}`}
+            onClick={() => setActiveTab("operator-products")}
+          >
+            Product Management
+          </button>
+        )}
         <button
           className={`tab-btn ${activeTab === "catalog" ? "active" : ""}`}
           onClick={() => setActiveTab("catalog")}
@@ -351,6 +361,10 @@ export function App() {
         <div className={`alert ${message.type === "success" ? "alert-success" : "alert-error"}`}>
           {message.text}
         </div>
+      )}
+
+      {activeTab === "operator-products" && currentUser?.role === "OPERATOR" && (
+        <OperatorProducts token={token} />
       )}
 
       {/* TAB 1: Operator Order Management Board */}

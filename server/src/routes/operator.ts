@@ -2,12 +2,14 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { OrderStatus } from "@prisma/client";
+import { operatorProductsRouter } from "./operatorProducts.js";
 
 export const operatorRouter = Router();
 
 // Enforce both authentication and OPERATOR role on all /api/operator routes
 operatorRouter.use(authenticateToken);
 operatorRouter.use(requireRole("OPERATOR"));
+operatorRouter.use("/products", operatorProductsRouter);
 
 // GET /api/operator/orders (AC-08, TEST-10, TEST-13)
 operatorRouter.get("/orders", async (_req: Request, res: Response): Promise<void> => {

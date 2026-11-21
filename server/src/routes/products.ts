@@ -7,6 +7,7 @@ export const productsRouter = Router();
 productsRouter.get("/", async (_req: Request, res: Response): Promise<void> => {
   try {
     const products = await prisma.product.findMany({
+      where: { archived_at: null },
       orderBy: { created_at: "asc" },
       select: {
         id: true,
