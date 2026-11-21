@@ -5,8 +5,6 @@ import { prisma } from "../src/prisma.js";
 import { generateToken } from "../src/middleware/auth.js";
 
 describe("AC-F06-03 (Integration): Concurrent multi-item checkout on PostgreSQL", () => {
-  let dbAvailable = false;
-
   const userA = { id: "integ-user-a", email: "integ-a@example.com", role: "CUSTOMER" as const };
   const userB = { id: "integ-user-b", email: "integ-b@example.com", role: "CUSTOMER" as const };
 
@@ -17,66 +15,56 @@ describe("AC-F06-03 (Integration): Concurrent multi-item checkout on PostgreSQL"
   const prodBId = "integ-prod-b";
 
   beforeAll(async () => {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      dbAvailable = true;
+    // Assert live PostgreSQL connection; propagate error if DB is unreachable to fail CI
+    await prisma.$queryRaw`SELECT 1`;
 
-      // Seed / ensure test users exist
-      await prisma.user.upsert({
-        where: { id: userA.id },
-        update: { email: userA.email, role: userA.role },
-        create: { id: userA.id, email: userA.email, password_hash: "hash", role: userA.role },
-      });
-      await prisma.user.upsert({
-        where: { id: userB.id },
-        update: { email: userB.email, role: userB.role },
-        create: { id: userB.id, email: userB.email, password_hash: "hash", role: userB.role },
-      });
+    // Seed / ensure test users exist
+    await prisma.user.upsert({
+      where: { id: userA.id },
+      update: { email: userA.email, role: userA.role },
+      create: { id: userA.id, email: userA.email, password_hash: "hash", role: userA.role },
+    });
+    await prisma.user.upsert({
+      where: { id: userB.id },
+      update: { email: userB.email, role: userB.role },
+      create: { id: userB.id, email: userB.email, password_hash: "hash", role: userB.role },
+    });
 
-      // Upsert test products with active status
-      await prisma.product.upsert({
-        where: { id: prodAId },
-        update: { name: "Integration Product A", price: 100, stock: 10, archived_at: null },
-        create: { id: prodAId, name: "Integration Product A", price: 100, stock: 10, archived_at: null },
-      });
-      await prisma.product.upsert({
-        where: { id: prodBId },
-        update: { name: "Integration Product B", price: 200, stock: 10, archived_at: null },
-        create: { id: prodBId, name: "Integration Product B", price: 200, stock: 10, archived_at: null },
-      });
-    } catch {
-      dbAvailable = false;
-      console.warn("PostgreSQL not reachable; skipping live DB integration test.");
-    }
+    // Upsert test products with active status
+    await prisma.product.upsert({
+      where: { id: prodAId },
+      update: { name: "Integration Product A", price: 100, stock: 10, archived_at: null },
+      create: { id: prodAId, name: "Integration Product A", price: 100, stock: 10, archived_at: null },
+    });
+    await prisma.product.upsert({
+      where: { id: prodBId },
+      update: { name: "Integration Product B", price: 200, stock: 10, archived_at: null },
+      create: { id: prodBId, name: "Integration Product B", price: 200, stock: 10, archived_at: null },
+    });
   });
 
   afterAll(async () => {
-    if (dbAvailable) {
-      try {
-        await prisma.orderItem.deleteMany({
-          where: { product_id: { in: [prodAId, prodBId] } },
-        });
-        await prisma.order.deleteMany({
-          where: { customer_id: { in: [userA.id, userB.id] } },
-        });
-        await prisma.product.deleteMany({
-          where: { id: { in: [prodAId, prodBId] } },
-        });
-        await prisma.user.deleteMany({
-          where: { id: { in: [userA.id, userB.id] } },
-        });
-      } catch (err) {
-        console.warn("Integration cleanup error:", err);
-      }
+    try {
+      await prisma.orderItem.deleteMany({
+        where: { product_id: { in: [prodAId, prodBId] } },
+      });
+      await prisma.order.deleteMany({
+        where: { customer_id: { in: [userA.id, userB.id] } },
+      });
+      await prisma.product.deleteMany({
+        where: { id: { in: [prodAId, prodBId] } },
+      });
+      await prisma.user.deleteMany({
+        where: { id: { in: [userA.id, userB.id] } },
+      });
+    } catch (err) {
+      console.warn("Integration cleanup error:", err);
+    } finally {
       await prisma.$disconnect();
     }
   });
 
   it("TEST-F06-03 (Live DB): both requests get 201 when stock is sufficient with opposite ordering [A, B] and [B, A]", async () => {
-    if (!dbAvailable) {
-      return;
-    }
-
     // Reset stock to 10 each
     await prisma.product.update({ where: { id: prodAId }, data: { stock: 10 } });
     await prisma.product.update({ where: { id: prodBId }, data: { stock: 10 } });
@@ -131,10 +119,6 @@ describe("AC-F06-03 (Integration): Concurrent multi-item checkout on PostgreSQL"
   });
 
   it("TEST-F06-03 (Live DB): when stock is only enough for one set, one gets 201 and the other gets 400 INSUFFICIENT_STOCK", async () => {
-    if (!dbAvailable) {
-      return;
-    }
-
     // Set stock to exactly 1 for both products (only enough for 1 order of { quantity: 1 })
     await prisma.product.update({ where: { id: prodAId }, data: { stock: 1 } });
     await prisma.product.update({ where: { id: prodBId }, data: { stock: 1 } });
