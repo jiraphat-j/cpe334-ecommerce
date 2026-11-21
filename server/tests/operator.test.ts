@@ -3,7 +3,7 @@ import request from "supertest";
 import { app } from "../src/app.js";
 import { prisma } from "../src/prisma.js";
 import { generateToken } from "../src/middleware/auth.js";
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, Prisma } from "@prisma/client";
 
 // Mock Prisma client for deterministic testing
 vi.mock("../src/prisma.js", () => {
@@ -109,6 +109,23 @@ describe("Issue #4: Operator Order Management & Status Transitions (F-04)", () =
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.order.status).toBe(OrderStatus.CONFIRMED);
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: "order-1", status: OrderStatus.PENDING },
+      data: { status: OrderStatus.CONFIRMED },
+    });
+  });
+
+  it("TEST-F07-04: Operator confirmation returns 409 when the guarded update loses the race", async () => {
+    vi.mocked(prisma.order.findUnique).mockResolvedValue({ status: OrderStatus.PENDING } as never);
+    vi.mocked(prisma.order.update).mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("The order status changed", { code: "P2025", clientVersion: "test" }),
+    );
+
+    const res = await request(app).patch("/api/operator/orders/order-1/status")
+      .set("Authorization", `Bearer ${operatorToken}`).send({ status: OrderStatus.CONFIRMED });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_TRANSITION");
   });
 
   // TEST-11b: Valid Transition PENDING -> CANCELLED (AC-09, FR-07)

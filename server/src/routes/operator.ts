@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, Prisma } from "@prisma/client";
 import { operatorProductsRouter } from "./operatorProducts.js";
 
 export const operatorRouter = Router();
@@ -82,7 +82,7 @@ operatorRouter.patch("/orders/:id/status", async (req: Request, res: Response): 
     }
 
     const updatedOrder = await prisma.order.update({
-      where: { id },
+      where: { id, status: order.status },
       data: { status: status as OrderStatus },
     });
 
@@ -91,6 +91,13 @@ operatorRouter.patch("/orders/:id/status", async (req: Request, res: Response): 
       data: { order: updatedOrder },
     });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      res.status(409).json({
+        success: false,
+        error: { code: "INVALID_TRANSITION", message: "Order status has changed. Refresh and try again." },
+      });
+      return;
+    }
     console.error("Update status error:", error);
     res.status(500).json({
       success: false,
