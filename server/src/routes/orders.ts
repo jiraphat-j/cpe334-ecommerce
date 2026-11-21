@@ -41,7 +41,11 @@ ordersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
 
     // Execute atomic transaction for stock verification, deduction, and order creation
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Fetch authoritative product data from database
+      // The guarded write locks the product row until checkout commits.
+      const inventory = quantity <= 2_147_483_647 ? await tx.product.updateMany({
+        where: { id: productId, archived_at: null, stock: { gte: quantity } },
+        data: { stock: { decrement: quantity } },
+      }) : { count: 0 };
       const product = await tx.product.findUnique({
         where: { id: productId },
       });
@@ -50,27 +54,14 @@ ordersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
         throw { status: 404, code: "PRODUCT_NOT_FOUND", message: "Product not found." };
       }
 
-      // 2. Validate sufficient stock
-      if (product.stock < quantity) {
+      if (inventory.count === 0 && product.archived_at) {
+        throw { status: 409, code: "PRODUCT_ARCHIVED", message: "This product is no longer available." };
+      }
+      if (inventory.count === 0) {
         throw {
           status: 400,
           code: "INSUFFICIENT_STOCK",
           message: `Insufficient stock for '${product.name}'. Requested ${quantity}, available ${product.stock}.`,
-        };
-      }
-
-      // 3. Atomically decrement stock
-      const updatedProduct = await tx.product.update({
-        where: { id: productId },
-        data: { stock: { decrement: quantity } },
-      });
-
-      // Guard against race conditions resulting in negative stock
-      if (updatedProduct.stock < 0) {
-        throw {
-          status: 400,
-          code: "INSUFFICIENT_STOCK",
-          message: "Stock exhausted during concurrent order placement.",
         };
       }
 
