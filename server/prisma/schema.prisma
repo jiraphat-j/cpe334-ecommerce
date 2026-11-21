@@ -28,6 +28,7 @@ model User {
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
   orders        Order[]
+  order_status_events OrderStatusEvent[]
 
   @@map("users")
 }
@@ -55,8 +56,23 @@ model Order {
   updated_at   DateTime    @updatedAt
   customer     User        @relation(fields: [customer_id], references: [id], onDelete: Cascade)
   items        OrderItem[]
+  timeline     OrderStatusEvent[]
 
   @@map("orders")
+}
+
+model OrderStatusEvent {
+  id          String      @id @default(cuid())
+  order_id    String
+  actor_id    String?
+  from_status OrderStatus
+  to_status   OrderStatus
+  created_at  DateTime    @default(now())
+  order       Order       @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  actor       User?       @relation(fields: [actor_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id, created_at, id])
+  @@map("order_status_events")
 }
 
 model OrderItem {

@@ -275,3 +275,12 @@ th {
 .product-management-actions {
   margin-top: 0.5rem;
 }
+
+.order-timeline p,
+.order-timeline ol {
+  margin-top: 0.5rem;
+}
+
+.order-timeline ol {
+  padding-left: 1.25rem;
+}
