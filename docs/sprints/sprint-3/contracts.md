@@ -72,38 +72,59 @@ NFR-03 (persistence & transactions), and NFR-04 (zero secrets).
 In the Customer "My Orders" view (`/orders`), each order row with status `PENDING` displays an active, primary **"Pay"** button next to "Cancel Order" (F-07) and "View Timeline" (F-08). For orders with status `CONFIRMED`, `SHIPPED`, or `CANCELLED`, the "Pay" button is hidden.
 
 1. **Payment Modal & Method Selection:**
-   - Clicking "Pay" opens the Payment Modal displaying the Order ID, creation time, line item count, and formatted total amount (`฿XX.XX`).
-   - The user selects a payment method via a segmented control: `PROMPTPAY` (Thai QR code, default) or `CREDIT_CARD`.
+   - Clicking "Pay" opens the Payment Modal displaying Order ID, created timestamp, line item summary, and formatted total amount (`฿XX.XX`).
+   - If an active `PaymentTransaction` already exists in `PENDING` status for this order, the modal pre-selects the stored `method` from that session. Otherwise, it defaults to `PROMPTPAY`.
+   - The user can select between `PROMPTPAY` (Thai QR code standard) and `CREDIT_CARD`.
    - The modal provides "Confirm Payment" and "Cancel" buttons.
 2. **Initiation & Waiting State:**
    - Clicking "Confirm Payment" dispatches `POST /api/orders/:id/pay` with `{ "method": "PROMPTPAY" | "CREDIT_CARD" }`.
-   - On receiving 200 with `{ sessionId, amount, currency }`, the modal switches to the Processing / Settlement state:
+   - On receiving 200 with `{ sessionId, orderId, amount, currency, method, status: "PENDING" }`, the modal switches to the Processing / Settlement state:
      - For `PROMPTPAY`: Renders a simulated PromptPay QR code with payment amount and countdown timer.
      - For `CREDIT_CARD`: Renders a simulated secure card gateway processing spinner.
      - Displays notice: "Awaiting payment confirmation... Please do not close this window."
      - The client polls `GET /api/orders/:id/payment` every 2 seconds to detect payment settlement.
-3. **Outcome States & UX Transitions:**
-   - **On SUCCESS callback:** Polling detects `status: "SUCCESS"`. The modal displays a green checkmark: "Payment Successful! Your order has been confirmed." After 1.5 seconds, the modal auto-dismisses. In the My Orders table, the order badge updates to `CONFIRMED`, "Pay" and "Cancel Order" buttons disappear, and "View Timeline" immediately reflects the payment confirmation transition (`PENDING` -> `CONFIRMED`).
-   - **On FAILED callback:** Polling detects `status: "FAILED"`. The modal shows an error alert: "Payment authorization failed. Your order has been cancelled and items returned to stock." A "Close" button allows dismissing the modal. The order status updates to `CANCELLED`.
+3. **Runnable Simulated Gateway Controls (Testing & Dev Mode):**
+   - In development and automated test modes, the modal exposes two interactive testing actions: **"Simulate Gateway Success"** and **"Simulate Gateway Failure"**.
+   - Clicking either action extracts the current session parameters (`sessionId`, `orderId`, `amount`, `currency`) and dispatches `POST /api/webhooks/payment` with the configured `PAYMENT_WEBHOOK_SECRET`.
+   - Automated integration tests dispatch this webhook directly to drive deterministic backend transitions.
+4. **Outcome States & Polling Termination:**
+   - **On SUCCESS callback:** Polling detects `status: "SUCCESS"`. Polling ceases immediately. The modal displays a green checkmark: "Payment Successful! Your order has been confirmed." After 1.5 seconds, the modal auto-dismisses. In the My Orders table, the order badge updates to `CONFIRMED`, "Pay" and "Cancel Order" buttons disappear, and "View Timeline" immediately reflects the payment confirmation transition (`PENDING` -> `CONFIRMED`).
+   - **On FAILED callback:** Polling detects `status: "FAILED"`. Polling ceases immediately. The modal shows an error alert: "Payment authorization failed. Your order has been cancelled and items returned to stock." A "Close" button allows dismissing the modal. The order status updates to `CANCELLED`.
+   - **On REFUND_REQUIRED (Late Callback):** Polling detects `status: "REFUND_REQUIRED"`. Polling ceases immediately. The modal displays: "Order was cancelled prior to payment completion. Your payment has been received and queued for automatic refund." The modal closes and the order reflects `CANCELLED (Refund Queued)`.
+   - **On Timeout (5 Minutes):** If polling runs for 5 minutes without settlement, polling ceases. The modal displays: "Payment session timed out. If you were charged, your order status will update automatically. You can retry payment from My Orders." A "Close" button dismisses the modal while the order remains `PENDING`.
    - **On Modal Dismissal without payment:** The customer can close the modal before payment authorization. The order remains `PENDING` and unpaid; the "Pay" button remains available.
 
 ### Backend Endpoints
 
 | Method and path | Caller | Headers / Payload | Success response | Error codes |
 | --- | --- | --- | --- | --- |
-| `POST /api/orders/:id/pay` | Customer (owner) | Header: `Authorization: Bearer <token>`<br>Body: `{ "method": "PROMPTPAY" \| "CREDIT_CARD" }` | 200 `{ success: true, data: { paymentSession } }` | 401 `UNAUTHORIZED`<br>403 `FORBIDDEN`<br>404 `ORDER_NOT_FOUND`<br>409 `INVALID_ORDER_STATUS` |
+| `POST /api/orders/:id/pay` | Customer (owner) | Header: `Authorization: Bearer <token>`<br>Body: `{ "method": "PROMPTPAY" \| "CREDIT_CARD" }` | 200 `{ success: true, data: { sessionId, orderId, amount, currency, method, status } }` | 400 `INVALID_PAYMENT_METHOD`<br>401 `UNAUTHORIZED`<br>403 `FORBIDDEN`<br>404 `ORDER_NOT_FOUND`<br>409 `INVALID_ORDER_STATUS` |
 | `GET /api/orders/:id/payment` | Customer (owner) / Operator | Header: `Authorization: Bearer <token>` | 200 `{ success: true, data: { payment } }` | 401 `UNAUTHORIZED`<br>403 `FORBIDDEN`<br>404 `ORDER_NOT_FOUND` |
-| `POST /api/webhooks/payment` | Gateway (public + secret) | Header: `X-Webhook-Secret: <secret>`<br>Body: `{ "eventId", "orderId", "sessionId", "gatewayRef", "amount", "currency", "status", "timestamp" }` | 200 `{ success: true, message: string, data?: { orderId, status } }` | 401 `INVALID_SIGNATURE`<br>404 `ORDER_NOT_FOUND`<br>404 `PAYMENT_SESSION_NOT_FOUND`<br>409 `PAYMENT_SESSION_MISMATCH`<br>409 `ORDER_ALREADY_CANCELLED`<br>422 `AMOUNT_MISMATCH` |
+| `POST /api/webhooks/payment` | Gateway (public + secret) | Header: `X-Webhook-Secret: <secret>`<br>Body: `{ "eventId", "orderId", "sessionId", "gatewayRef", "amount", "currency", "status", "timestamp" }` | 200 `{ success: true, message: string, data?: { orderId, status } }` | 400 `INVALID_PAYMENT_STATUS`<br>401 `INVALID_SIGNATURE`<br>404 `ORDER_NOT_FOUND`<br>404 `PAYMENT_SESSION_NOT_FOUND`<br>409 `PAYMENT_SESSION_MISMATCH`<br>409 `ORDER_ALREADY_CANCELLED`<br>409 `ORDER_ALREADY_CONFIRMED`<br>409 `ORDER_ALREADY_SHIPPED`<br>409 `PAYMENT_ALREADY_SETTLED`<br>422 `AMOUNT_MISMATCH` |
 
 #### Payment Initiation (`POST /api/orders/:id/pay`)
 - **Authorization:** Requires valid JWT (401 `UNAUTHORIZED`). Caller must be the customer who owns the order (403 `FORBIDDEN`).
 - **Preconditions:** Order must exist (404 `ORDER_NOT_FOUND`) and its status must be `PENDING`. Any other status (`CONFIRMED`, `SHIPPED`, `CANCELLED`) returns 409 `INVALID_ORDER_STATUS`.
+- **Payload Validation:** `method` must be either `"PROMPTPAY"` or `"CREDIT_CARD"`. Unsupported or missing values reject immediately with 400 `INVALID_PAYMENT_METHOD` (`{ "success": false, "error": { "code": "INVALID_PAYMENT_METHOD", "message": "Method must be one of: PROMPTPAY, CREDIT_CARD" } }`).
 - **Session Issuance & Idempotent Initiation:**
   - Generates a unique correlation token `sessionId` (e.g. `pay_sess_<uuid>`).
-  - **Active Session Reuse:** If a `PaymentTransaction` already exists for this order with `status == PENDING`, the server reuses and returns the active `sessionId` and transaction data rather than generating a new session or overwriting the existing record. This ensures that an in-flight gateway callback referencing the original `sessionId` is not invalidated.
+  - **Active Session Reuse:** If a `PaymentTransaction` already exists for this order with `status == PENDING`, the server reuses and returns the active `sessionId` and transaction data rather than generating a new session or overwriting the existing record. If the existing session is returned, the UI renders the stored `method`.
   - **Simultaneous First-Time Initiation:** When two initiation requests arrive concurrently for an order before any transaction exists, both requests are serialized via `SELECT ... FROM orders WHERE id = $1 FOR UPDATE` (or the losing insert catches the `order_id @unique` collision, rolls back, and reloads the winning `PaymentTransaction`). Both simultaneous callers receive HTTP 200 with the exact same winning `sessionId`, and exactly one `PaymentTransaction` row is created in the database.
-  - **Replacement & Conflict:** If caller attempts to re-initiate payment when a session is already active, the active session is returned (200 OK). Creating a replacement session is only permitted if the prior transaction reached a terminal failed state without cancelling the order. Settled orders (`CONFIRMED`, `CANCELLED`, `SHIPPED`) reject initiation with 409 `INVALID_ORDER_STATUS`.
-  - Returns 200 with `{ sessionId, orderId, amount, currency, method, status: "PENDING" }`.
+  - **Replacement & Transaction Guard:** Creating a replacement session is only permitted if the prior transaction reached a terminal failed state without cancelling the order. Session replacement executes under the same atomic row lock as settlement (`FOR UPDATE`), ensuring that any in-flight callback targeting a superseded session evaluates against the newly committed `session_id` and fails correlation with 409 `PAYMENT_SESSION_MISMATCH` with zero writes.
+  - Returns 200 with:
+    ```json
+    {
+      "success": true,
+      "data": {
+        "sessionId": "pay_sess_clx123",
+        "orderId": "ord_abc456",
+        "amount": 250.00,
+        "currency": "THB",
+        "method": "PROMPTPAY",
+        "status": "PENDING"
+      }
+    }
+    ```
 
 #### Payment Status Read (`GET /api/orders/:id/payment`)
 - **Authorization:** Requires valid JWT (401 `UNAUTHORIZED`). Only the order owner or an `OPERATOR` may read payment details. Stranger customers receive 403 `FORBIDDEN`. Unknown orders return 404 `ORDER_NOT_FOUND`.
@@ -134,68 +155,59 @@ In the Customer "My Orders" view (`/orders`), each order row with status `PENDIN
 1. **Authentication & Secret Validation:**
    - Validates `X-Webhook-Secret` header against the server environment secret `PAYMENT_WEBHOOK_SECRET`.
    - Missing or mismatched secret immediately returns 401 `INVALID_SIGNATURE` before querying the database.
-2. **Replay Deduplication (Separate from Order State):**
+2. **Payload Validation:**
+   - `status` must be either `"SUCCESS"` or `"FAILED"`. Any other value returns 400 `INVALID_PAYMENT_STATUS` (`{ "success": false, "error": { "code": "INVALID_PAYMENT_STATUS", "message": "Status must be one of: SUCCESS, FAILED" } }`).
+   - Webhook `amount` must match `order.total_amount` exactly (to 2 decimal places) and `currency` must be `"THB"`. Mismatch returns 422 `AMOUNT_MISMATCH`. Zero writes.
+3. **Replay Deduplication (Separate from Order State):**
    - The webhook handler queries `PaymentWebhookEvent` for `event_id == payload.eventId`.
    - **If `eventId` has already been processed (Replay):**
      Immediately returns 200 `{ success: true, message: "Event already processed", duplicate: true }`.
      Zero mutations occur: no duplicate status events, no payment record changes, and no stock adjustments.
      **Replay Rule:** This 200 idempotent acknowledgment applies to *all* replayed `eventId` deliveries, including deliveries whose original execution returned 409 (such as a late callback on a cancelled order). This guarantees that the payment gateway receives a reliable 200 receipt and halts retries.
    - **Concurrent Replay Delivery Collision:** If two identical callback deliveries race concurrently past the initial lookup, the insert of `PaymentWebhookEvent(eventId)` will trigger a unique constraint collision on `event_id` (`P2002` in Prisma / `23505` in PostgreSQL). The handler explicitly catches this collision, rolls back the concurrent sub-transaction, and returns 200 `{ success: true, message: "Event already processed", duplicate: true }`.
-3. **Correlation to Order & Initiated Payment Session:**
+4. **Correlation to Order & Initiated Payment Session:**
    - **Order Correlation:** Looks up `Order` by `payload.orderId`. If not found, returns 404 `ORDER_NOT_FOUND`. Zero writes.
    - **Payment Session Correlation:** Looks up `PaymentTransaction` by `order_id == payload.orderId`.
      - **Missing Session:** If no `PaymentTransaction` exists for the order (e.g. callback arrives for an order where payment checkout was never initiated), returns 404 `PAYMENT_SESSION_NOT_FOUND` with message `"No payment session found for this order"`. **Zero writes** to payment, order, timeline, or inventory.
-     - **Mismatched Session:** If a `PaymentTransaction` exists, but its `session_id` does NOT match `payload.sessionId`, returns 409 `PAYMENT_SESSION_MISMATCH` with message `"Payment session correlation ID mismatch"`. **Zero writes** to payment, order, timeline, or inventory.
-4. **Amount and Currency Validation:**
-   - Webhook `amount` must match `order.total_amount` exactly (to 2 decimal places) and `currency` must be `"THB"`.
-   - Mismatch returns 422 `AMOUNT_MISMATCH`. **Zero writes** to payment, order, timeline, or inventory.
-5. **Business Processing, Row-Level Locking, and Race Concurrency:**
-   All business mutations, state transitions, stock restorations, and the recording of `PaymentWebhookEvent(eventId)` commit atomically in a single Prisma transaction (`prisma.$transaction`).
-   The transaction acquires an atomic row-level lock on the order (`SELECT ... FROM orders WHERE id = $1 FOR UPDATE`).
+     - **Mismatched / Superseded Session:** If a `PaymentTransaction` exists, but its `session_id` does NOT match `payload.sessionId`, returns 409 `PAYMENT_SESSION_MISMATCH` with message `"Payment session correlation ID mismatch"`. **Zero writes** to payment, order, timeline, or inventory.
+5. **Settlement Matrix and State Machine:**
+   All mutations, status updates, stock restorations, and event receipts execute atomically inside `prisma.$transaction` guarded by an atomic row lock on `Order` (`SELECT ... FOR UPDATE`).
+   The matrix below specifies the exact outcomes across all combinations of order and payment states:
+
+| Order Status | Payment Status | Callback Status | Payment Next | Order Next | Timeline Event | Stock Restoration | Response |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `PENDING` | `PENDING` | `SUCCESS` | `SUCCESS` (`gatewayRef`) | `CONFIRMED` | Yes (`PENDING` $\rightarrow$ `CONFIRMED`) | 0 (already deducted at checkout) | 200 OK |
+| `PENDING` | `PENDING` | `FAILED` | `FAILED` (`gatewayRef`) | `CANCELLED` | Yes (`PENDING` $\rightarrow$ `CANCELLED`) | Exactly 1 restoration (`stock_restored = true`) | 200 OK |
+| `CONFIRMED` (Operator) | `PENDING` | `SUCCESS` | `SUCCESS` (`gatewayRef`) | `CONFIRMED` (unchanged) | None (already confirmed) | 0 | 200 OK |
+| `CONFIRMED` (Operator) | `PENDING` | `FAILED` | `FAILED` (`gatewayRef`) | `CONFIRMED` (unchanged) | None | 0 (Operator confirmed order) | 409 `ORDER_ALREADY_CONFIRMED` |
+| `CONFIRMED` | `SUCCESS` | `SUCCESS` (new evt) | `SUCCESS` (preserved) | `CONFIRMED` (unchanged) | None | 0 | 200 OK (settled receipt) |
+| `CONFIRMED` | `SUCCESS` | `FAILED` (new evt) | `SUCCESS` (immutable) | `CONFIRMED` (unchanged) | None | 0 | 409 `PAYMENT_ALREADY_SETTLED` |
+| `SHIPPED` | Any | `SUCCESS` (new evt) | Preserved | `SHIPPED` (unchanged) | None | 0 | 200 OK |
+| `SHIPPED` | Any | `FAILED` (new evt) | Preserved | `SHIPPED` (unchanged) | None | 0 (goods already in transit) | 409 `ORDER_ALREADY_SHIPPED` |
+| `CANCELLED` | `PENDING` | `SUCCESS` (late) | `REFUND_REQUIRED` | `CANCELLED` (unchanged) | None | 1 if `stock_restored == false`; 0 if `true` | 409 `ORDER_ALREADY_CANCELLED` |
+| `CANCELLED` | `PENDING` | `FAILED` | `FAILED` | `CANCELLED` (unchanged) | None | 1 if `stock_restored == false`; 0 if `true` | 200 OK |
+| `CANCELLED` | `REFUND_REQUIRED` | `FAILED` (new evt) | `REFUND_REQUIRED` (immutable) | `CANCELLED` (unchanged) | None | 0 | 200 OK |
+| `CANCELLED` | `FAILED` | `SUCCESS` (new evt) | `REFUND_REQUIRED` | `CANCELLED` (unchanged) | None | 0 | 409 `ORDER_ALREADY_CANCELLED` |
+
+6. **Stock Restoration Tracking and Rollback Behavior:**
+   - **Stock Restoration Tracking (`order.stock_restored`):**
+     - Customer cancellation (F-07) and F-09 failure on `PENDING` order (Path D) restore stock once and set `stock_restored = true`.
+     - Legacy Operator Cancel (`PATCH /api/operator/orders/:id/status` CANCELLED) sets status `CANCELLED` but leaves `stock_restored = false`.
+     - When a callback encounters an already `CANCELLED` order (Paths C and E), it inspects `order.stock_restored`:
+       - If `order.stock_restored == false`: Atomically restores stock for all saved `OrderItems` in ascending product ID order and sets `stock_restored = true`.
+       - If `order.stock_restored == true`: Bypasses restocking (zero duplicate restorations).
    - **Concurrency with F-07 Customer Cancellation:**
      Both F-07 cancellation (`POST /api/orders/:id/cancel`) and F-09 callback acquire `FOR UPDATE` on `Order`. F-07's guarded conditional update serializes competing status changes and returns `HTTP 409 INVALID_TRANSITION` (`{ success: false, error: { code: "INVALID_TRANSITION", message: "Only pending orders can be cancelled." } }`) whenever the order is no longer `PENDING`.
      - **If callback locks first:**
        - `SUCCESS` callback wins: order transitions `PENDING` -> `CONFIRMED`. Competing F-07 cancellation fails with **HTTP 409 `INVALID_TRANSITION`**, and **zero stock restoration occurs**.
        - `FAILED` callback wins: order transitions `PENDING` -> `CANCELLED` and restores stock once. Competing F-07 cancellation fails with **HTTP 409 `INVALID_TRANSITION`**, and **zero additional stock restoration occurs** (total: exactly 1 restoration).
      - **If F-07 locks first:**
-       - Customer cancellation wins: order transitions `PENDING` -> `CANCELLED` and restores stock once.
-       - A competing `SUCCESS` callback sees `order.status == CANCELLED`, enters Path C (flags `REFUND_REQUIRED`, zero stock modification, returns 409 `ORDER_ALREADY_CANCELLED`). Total stock restorations: exactly 1.
-       - A competing `FAILED` callback sees `order.status == CANCELLED`, enters Path E (records failure, zero stock modification, returns 200). Total stock restorations: exactly 1.
+       - Customer cancellation wins: order transitions `PENDING` -> `CANCELLED` and restores stock once (`stock_restored = true`).
+       - A competing `SUCCESS` callback sees `order.status == CANCELLED`, enters Path C (flags `REFUND_REQUIRED`, sees `stock_restored == true`, zero stock modification, returns 409 `ORDER_ALREADY_CANCELLED`). Total stock restorations: exactly 1.
+       - A competing `FAILED` callback sees `order.status == CANCELLED`, enters Path E (records failure, sees `stock_restored == true`, zero stock modification, returns 200). Total stock restorations: exactly 1.
      - Across all interleaved executions, at most one order status transition takes effect, and inventory stock is restored at most once.
-   - **Path A: SUCCESS callback on PENDING order:**
-     - Atomically transitions order status `PENDING` -> `CONFIRMED`.
-     - Updates `PaymentTransaction`: `status: "SUCCESS"`, `gateway_ref: payload.gatewayRef`.
-     - Records `OrderStatusEvent` (F-08): `from_status: "PENDING"`, `to_status: "CONFIRMED"`, `actor_id: null` (system gateway).
-     - Inventory: Stock was decremented at checkout; stock remains unchanged.
-     - Inserts `PaymentWebhookEvent` with `payload.eventId`.
-     - Returns 200 `{ success: true, message: "Payment confirmed and order updated" }`.
-   - **Path B: SUCCESS callback on Order Already CONFIRMED by Operator:**
-     - When an Operator has previously confirmed the order manually (`PATCH /api/operator/orders/:id/status`), order status is already `CONFIRMED`, but `PaymentTransaction.status` is still `PENDING`.
-     - Updates `PaymentTransaction`: `status: "SUCCESS"`, `gateway_ref: payload.gatewayRef`.
-     - Order status is already `CONFIRMED`; **no duplicate `OrderStatusEvent`** is created and no invalid status transition is attempted.
-     - Inserts `PaymentWebhookEvent` with `payload.eventId`.
-     - Inventory remains unchanged.
-     - Returns 200 `{ success: true, message: "Payment recorded successfully; order already confirmed" }`.
-   - **Path C: SUCCESS callback on Order Already CANCELLED (Late Callback):**
-     - Customer cancelled order under F-07 before payment callback arrived. Cannot resurrect a cancelled order.
-     - Updates `PaymentTransaction`: `status: "REFUND_REQUIRED"`, `gateway_ref: payload.gatewayRef`.
-     - Order remains `CANCELLED`; no timeline resurrection event; stock remains restored for other buyers.
-     - Inserts `PaymentWebhookEvent` with `payload.eventId`.
-     - Returns 409 `ORDER_ALREADY_CANCELLED` `{ success: false, code: "ORDER_ALREADY_CANCELLED", message: "Order is already cancelled; payment flagged for refund" }`.
-     *(Note: Any subsequent replay of this `eventId` is caught by Step 2 and returns 200 idempotent acknowledgment).*
-   - **Path D: FAILED callback on PENDING order:**
-     - Atomically transitions order status `PENDING` -> `CANCELLED`.
-     - Updates `PaymentTransaction`: `status: "FAILED"`, `gateway_ref: payload.gatewayRef`.
-     - Records `OrderStatusEvent`: `from_status: "PENDING"`, `to_status: "CANCELLED"`, `actor_id: null`.
-     - **Inventory Restoration:** Atomically increments `stock` for all saved `OrderItems`, locking product rows in ascending ID order (`ORDER BY id ASC`) to eliminate deadlocks (`40P01`) consistent with F-06 and F-07.
-     - Inserts `PaymentWebhookEvent` with `payload.eventId`.
-     - Returns 200 `{ success: true, message: "Payment failure recorded and stock restored" }`.
-   - **Path E: FAILED callback on Order Already CANCELLED & Settled State Rules:**
-     - **Settled State Protection:** If `PaymentTransaction` has already reached `REFUND_REQUIRED` (from Path C), a subsequent `FAILED` callback for the same session MUST NOT overwrite `REFUND_REQUIRED` to `FAILED`. The status `REFUND_REQUIRED` is strictly preserved, stock is not modified, and the server acknowledges with 200 `{ success: true, message: "Payment already settled as refund required" }`.
-     - If `PaymentTransaction` is in `PENDING`, updates `PaymentTransaction`: `status: "FAILED"`.
-     - Order is already `CANCELLED` and stock already restored; zero duplicate restorations or events.
-     - Inserts `PaymentWebhookEvent` with `payload.eventId`.
-     - Returns 200 `{ success: true, message: "Payment failure recorded" }`.
+   - **Rollback Behavior:**
+     All database mutations, row locks, stock increments, and receipt logs commit inside a single atomic Prisma transaction. If any query fails (e.g. database error, lock timeout, constraint violation), the entire transaction rolls back completely (zero partial writes) and returns 500 `SERVER_ERROR`.
 
 ### Data Model (`schema.prisma` additions)
 
@@ -210,6 +222,13 @@ enum PaymentStatus {
 enum PaymentMethod {
   PROMPTPAY
   CREDIT_CARD
+}
+
+// Additive field on Order model
+model Order {
+  // ... existing fields ...
+  stock_restored  Boolean       @default(false)
+  payment         PaymentTransaction?
 }
 
 model PaymentTransaction {
@@ -247,18 +266,29 @@ model PaymentWebhookEvent {
 | AC / STS | Layer and expectation |
 | --- | --- |
 | AC-F09-01 / TEST-F09-01 | API/DB (PostgreSQL): Customer initiates payment (`POST /api/orders/:id/pay`) on their PENDING order; receives and persists unique `session_id` and `PaymentTransaction(PENDING)`. Two simultaneous first-time requests (`Promise.all`) serialize and both return HTTP 200 with the identical `sessionId` and create exactly one `PaymentTransaction` row. Subsequent repeated initiation reuses and returns the existing active `sessionId` without breaking in-flight callbacks. Unauthenticated receives 401, stranger Customer receives 403, and non-PENDING order returns 409. |
-| AC-F09-02 / TEST-F09-02 | API/DB: Payment status read (`GET /api/orders/:id/payment`). Returns 200 with `payment: null` for order without initiated payment session. Returns 200 with full payment fields after initiation. Anonymous caller receives 401, stranger Customer receives 403, unknown order returns 404. |
+| AC-F09-02 / TEST-F09-02 | API/DB: Payment status read (`GET /api/orders/:id/payment`). Returns 200 with `payment: null, status: "UNPAID"` for order without initiated payment session. Returns 200 with full payment fields after initiation. Anonymous caller receives 401, stranger Customer receives 403, unknown order returns 404. |
 | AC-F09-03 / TEST-F09-03 | API/DB: Valid webhook `SUCCESS` callback on PENDING order. Transitions order to `CONFIRMED`, creates `OrderStatusEvent`, updates payment status to `SUCCESS` with `gatewayRef`, preserves inventory stock, and commits `PaymentWebhookEvent`. |
-| AC-F09-04 / TEST-F09-04 | API/DB: Valid webhook `FAILED` callback on PENDING order. Transitions order to `CANCELLED`, creates cancellation `OrderStatusEvent`, updates payment status to `FAILED`, and restores stock for all multi-item line items in sorted product ID order. |
-| AC-F09-05 / TEST-F09-05 | API/DB: Webhook session correlation validation. Webhook referencing order with no initiated payment returns 404 `PAYMENT_SESSION_NOT_FOUND`. Webhook with mismatched `sessionId` returns 409 `PAYMENT_SESSION_MISMATCH`. Both scenarios guarantee zero writes to payment, order, timeline, or inventory. |
-| AC-F09-06 / TEST-F09-06 | API: Webhook security and payload validation. Missing or invalid secret header returns 401 `INVALID_SIGNATURE`. Unknown `orderId` returns 404 `ORDER_NOT_FOUND`. Amount or currency mismatch returns 422 `AMOUNT_MISMATCH` with zero writes. |
+| AC-F09-04 / TEST-F09-04 | API/DB: Valid webhook `FAILED` callback on PENDING order. Transitions order to `CANCELLED`, creates cancellation `OrderStatusEvent`, updates payment status to `FAILED`, sets `stock_restored = true`, and restores stock for all multi-item line items in sorted product ID order. |
+| AC-F09-05 / TEST-F09-05 | API/DB: Webhook session correlation validation. Webhook referencing order with no initiated payment returns 404 `PAYMENT_SESSION_NOT_FOUND`. Webhook with mismatched `sessionId` returns 409 `PAYMENT_SESSION_MISMATCH`. Callback targeting a superseded session cannot settle a replacement session. All scenarios guarantee zero writes to payment, order, timeline, or inventory. |
+| AC-F09-06 / TEST-F09-06 | API: Webhook security and payload validation. Missing or invalid secret header returns 401 `INVALID_SIGNATURE`. Unknown `orderId` returns 404 `ORDER_NOT_FOUND`. Amount or currency mismatch returns 422 `AMOUNT_MISMATCH`. Unsupported payment method or status value returns 400. Zero writes across all invalid requests. |
 | AC-F09-07 / TEST-F09-07 | API/DB: Replay deduplication rules. Replaying any already-processed `eventId` immediately returns 200 `{ duplicate: true }` without database mutations. Replaying an `eventId` whose original run returned 409 (late callback on cancelled order) also acknowledges with 200. |
-| AC-F09-08 / TEST-F09-08 | API/DB: Webhook `SUCCESS` callback on Operator-confirmed order. When order was already confirmed by Operator, callback updates `PaymentTransaction` from `PENDING` -> `SUCCESS` with `gatewayRef`, does not create duplicate order timeline events, and returns 200. |
+| AC-F09-08 / TEST-F09-08 | API/DB: Webhook callback on Operator-confirmed order. When order was already confirmed by Operator, a `SUCCESS` callback updates payment to `SUCCESS` (200) without duplicate timeline events. A `FAILED` callback updates payment to `FAILED` and returns 409 `ORDER_ALREADY_CONFIRMED` leaving the order `CONFIRMED`. |
 | AC-F09-09 / TEST-F09-09 | API/DB: Late webhook `SUCCESS` on customer-cancelled order. Updates `PaymentTransaction` status to `REFUND_REQUIRED`, preserves order `CANCELLED` status and restored stock, records `PaymentWebhookEvent`, and returns 409 `ORDER_ALREADY_CANCELLED`. |
-| AC-F09-10 / TEST-F09-10 | UI/E2E: Customer payment workflow in My Orders. Displays "Pay" button only for `PENDING` orders. Launches modal to select `PROMPTPAY` vs `CREDIT_CARD`. Shows processing state while polling `GET /api/orders/:id/payment`. On success, dismisses modal, updates order badge to `CONFIRMED`, removes "Pay" and "Cancel" buttons, and updates timeline. |
+| AC-F09-10 / TEST-F09-10 | UI/E2E: Customer payment workflow in My Orders. Displays "Pay" button only for `PENDING` orders. Launches modal to select `PROMPTPAY` vs `CREDIT_CARD`. Shows processing state while polling `GET /api/orders/:id/payment`. Exposes dev test triggers ("Simulate Success" / "Simulate Failure"). Polling terminates on SUCCESS, FAILED, REFUND_REQUIRED, or 5-minute timeout with appropriate user feedback. |
 | AC-F09-11 / TEST-F09-11 | API/DB (PostgreSQL): Concurrent webhook replay race. Two simultaneous requests with identical `eventId` execute; unique constraint collision on `PaymentWebhookEvent(eventId)` is caught and the losing request returns 200 `{ duplicate: true }` with zero duplicate mutations. |
 | AC-F09-12 / TEST-F09-12 | API/DB (PostgreSQL): Webhook callback racing with F-07 customer cancellation. Competing requests serialize on the order's atomic guard/lock. When `SUCCESS` callback wins, order transitions to `CONFIRMED`, cancellation receives HTTP 409 `INVALID_TRANSITION`, and zero stock restoration occurs. When cancellation wins against `SUCCESS`, order transitions to `CANCELLED` and restores stock once, and callback sets `REFUND_REQUIRED` with 409 and zero additional restoration (total: 1 restoration). When `FAILED` callback races with cancellation, whichever wins cancels the order and restores stock once; the loser receives HTTP 409 `INVALID_TRANSITION` (cancellation) or 200 (callback Path E) with zero additional restoration (total: 1 restoration). |
-| AC-F09-13 / TEST-F09-13 | API/DB: Settled payment state preservation. When payment is `REFUND_REQUIRED`, a subsequent `FAILED` event with distinct `eventId` preserves `REFUND_REQUIRED` (does not overwrite to `FAILED`), leaves stock untouched, and returns 200. |
+| AC-F09-13 / TEST-F09-13 | API/DB: Settled payment state preservation. When payment is `REFUND_REQUIRED`, a subsequent `FAILED` event with distinct `eventId` preserves `REFUND_REQUIRED` (does not overwrite to `FAILED`), leaves stock untouched, and returns 200. When payment is settled `SUCCESS`, a subsequent `FAILED` callback returns 409 `PAYMENT_ALREADY_SETTLED` without corrupting payment or order state. |
+| AC-F09-14 / TEST-F09-14 | API/DB (PostgreSQL): Operator-cancelled order stock handling & transaction rollback. When a late callback arrives for an order cancelled by an Operator (`stock_restored == false`), the transaction restores stock for all order items once and sets `stock_restored = true`. If stock restoration encounters an unhandled error, the entire transaction rolls back completely (zero mutations) and returns 500. |
+| AC-F09-15 / TEST-F09-15 | API/DB: Webhook callback on `SHIPPED` order. A `SUCCESS` callback on an order already `SHIPPED` acknowledges with 200 without mutating order state. A `FAILED` callback on a `SHIPPED` order returns 409 `ORDER_ALREADY_SHIPPED` and mutates neither order status nor inventory stock. |
+
+### Final Delivery implementation and verification plan
+
+This specification establishes the complete contract for the remaining Sprint 3 baseline scope.
+Full implementation, automated test suites (unit mock + live PostgreSQL integration), and UI payment modal are scheduled for Final Delivery:
+- **Owner:** @thanapornboont-star
+- **Target completion date:** 13 December 2026 (Final Delivery Milestone)
+- **Dependencies:** OrderItems schema (F-06), status cancellation logic (F-07), and order timeline event logging (F-08).
+- **Execution evidence:** Linked to Final Delivery feature Issue upon completion.
 
 ### Final Delivery implementation and verification plan
 
