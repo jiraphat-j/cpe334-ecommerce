@@ -301,6 +301,10 @@ ordersRouter.get("/:id", async (req: Request, res: Response): Promise<void> => {
         items: {
           include: { product: true },
         },
+        timeline: {
+          orderBy: [{ created_at: "asc" }, { id: "asc" }],
+          select: { from_status: true, to_status: true, created_at: true },
+        },
       },
     });
 

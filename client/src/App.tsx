@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { parseAndValidateQuantity } from "./utils/orderValidation";
 import { OperatorProducts } from "./OperatorProducts";
+import { OrderTimeline } from "./OrderTimeline";
 
 interface Product {
   id: string;
@@ -816,6 +817,7 @@ export function App() {
                           Cancel Order
                         </button>
                       )}
+                      <OrderTimeline key={token} orderId={order.id} token={token} />
                     </td>
                   </tr>
                 ))}
