@@ -81,9 +81,21 @@ operatorRouter.patch("/orders/:id/status", async (req: Request, res: Response): 
       return;
     }
 
+    const recordConfirmation = order.status === OrderStatus.PENDING && status === OrderStatus.CONFIRMED;
     const updatedOrder = await prisma.order.update({
       where: { id, status: order.status },
-      data: { status: status as OrderStatus },
+      data: {
+        status: status as OrderStatus,
+        ...(recordConfirmation && {
+          timeline: {
+            create: {
+              from_status: order.status,
+              to_status: OrderStatus.CONFIRMED,
+              actor_id: req.user!.id,
+            },
+          },
+        }),
+      },
     });
 
     res.status(200).json({

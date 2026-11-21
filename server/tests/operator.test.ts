@@ -111,7 +111,12 @@ describe("Issue #4: Operator Order Management & Status Transitions (F-04)", () =
     expect(res.body.data.order.status).toBe(OrderStatus.CONFIRMED);
     expect(prisma.order.update).toHaveBeenCalledWith({
       where: { id: "order-1", status: OrderStatus.PENDING },
-      data: { status: OrderStatus.CONFIRMED },
+      data: {
+        status: OrderStatus.CONFIRMED,
+        timeline: {
+          create: { from_status: OrderStatus.PENDING, to_status: OrderStatus.CONFIRMED, actor_id: "op-1" },
+        },
+      },
     });
   });
 
