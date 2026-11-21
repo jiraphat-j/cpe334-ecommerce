@@ -119,6 +119,19 @@ describe("F-06 Atomic multi-item cart checkout", () => {
       .set("Authorization", customerToken)
       .send({ items: [{ productId: "p1", quantity: 1.5 }] });
     expect(resFraction.status).toBe(400);
+
+    // Aggregated quantity exceeding PostgreSQL 32-bit int
+    const resOverflow = await request(app)
+      .post("/api/orders")
+      .set("Authorization", customerToken)
+      .send({
+        items: [
+          { productId: "p1", quantity: 2_000_000_000 },
+          { productId: "p1", quantity: 1_000_000_000 },
+        ],
+      });
+    expect(resOverflow.status).toBe(400);
+    expect(resOverflow.body.error.code).toBe("INVALID_QUANTITY");
   });
 
   it("TEST-F06-02: rejects and rolls back if an item is archived or missing", async () => {
@@ -199,6 +212,49 @@ describe("F-06 Atomic multi-item cart checkout", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INSUFFICIENT_STOCK");
+  });
+
+  // TEST-F06-03: Concurrency & Deadlock Prevention (Reviewer P1)
+  it("TEST-F06-03: acquires row locks in deterministic sorted productId order to prevent deadlocks (40P01)", async () => {
+    const lockOrder: string[] = [];
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback) => {
+      const tx = {
+        product: {
+          findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+            if (where.id === "p1") return Promise.resolve(prod1);
+            if (where.id === "p2") return Promise.resolve(prod2);
+            return Promise.resolve(null);
+          }),
+          updateMany: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+            lockOrder.push(where.id);
+            return Promise.resolve({ count: 1 });
+          }),
+        },
+        order: {
+          create: vi.fn().mockResolvedValue({
+            id: "order-sorted",
+            total_amount: 3800,
+            items: [],
+          }),
+        },
+      };
+      return (callback as (client: any) => Promise<any>)(tx);
+    });
+
+    // Request sent with items in reverse order: [p2, p1]
+    const res = await request(app)
+      .post("/api/orders")
+      .set("Authorization", customerToken)
+      .send({
+        items: [
+          { productId: "p2", quantity: 1 },
+          { productId: "p1", quantity: 2 },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    // Verified: locks must be acquired in sorted order: ["p1", "p2"] regardless of payload sequence
+    expect(lockOrder).toEqual(["p1", "p2"]);
   });
 
   // TEST-F06-04: Role protection and order isolation

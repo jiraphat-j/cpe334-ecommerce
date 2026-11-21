@@ -256,6 +256,15 @@ export function App() {
       return;
     }
 
+    const unavailableItems = Object.keys(cart).filter((id) => !products.some((p) => p.id === id && p.stock > 0));
+    if (unavailableItems.length > 0) {
+      setMessage({
+        text: "❌ Please remove unavailable or archived items from your cart before checking out.",
+        type: "error",
+      });
+      return;
+    }
+
     const items = Object.entries(cart)
       .filter(([_, qty]) => qty > 0)
       .map(([productId, quantity]) => ({ productId, quantity }));
@@ -659,13 +668,21 @@ export function App() {
                 <tbody>
                   {Object.entries(cart).map(([productId, quantity]) => {
                     const product = products.find((p) => p.id === productId);
-                    const name = product?.name || productId;
+                    const isAvailable = product !== undefined && product.stock > 0;
+                    const name = product?.name || `Product (${productId})`;
                     const price = product?.price || 0;
                     const subtotal = price * quantity;
                     return (
-                      <tr key={productId}>
-                        <td style={{ fontWeight: 600 }}>{name}</td>
-                        <td>฿{price.toLocaleString()}</td>
+                      <tr key={productId} style={!isAvailable ? { backgroundColor: "#fef2f2" } : undefined}>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{name}</div>
+                          {!isAvailable && (
+                            <span style={{ fontSize: "0.75rem", color: "var(--danger)", fontWeight: 600 }}>
+                              ⚠️ Unavailable / Archived — Please remove
+                            </span>
+                          )}
+                        </td>
+                        <td>{isAvailable ? `฿${price.toLocaleString()}` : <span style={{ color: "var(--danger)", fontWeight: 600 }}>Unavailable</span>}</td>
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                             <button
@@ -680,13 +697,13 @@ export function App() {
                               className="btn btn-secondary"
                               style={{ padding: "2px 8px", fontSize: "0.8rem" }}
                               onClick={() => updateCartQuantity(productId, quantity + 1)}
-                              disabled={product ? quantity >= product.stock : false}
+                              disabled={!isAvailable || quantity >= product.stock}
                             >
                               +
                             </button>
                           </div>
                         </td>
-                        <td style={{ fontWeight: 600 }}>฿{subtotal.toLocaleString()}</td>
+                        <td style={{ fontWeight: 600 }}>{isAvailable ? `฿${subtotal.toLocaleString()}` : "-"}</td>
                         <td>
                           <button
                             className="btn btn-danger"
@@ -707,18 +724,25 @@ export function App() {
                   <span style={{ fontSize: "1.4rem", fontWeight: 700, color: "#1e293b", marginLeft: "8px" }}>
                     ฿{Object.entries(cart).reduce((sum, [pId, q]) => {
                       const p = products.find((prod) => prod.id === pId);
-                      return sum + (p ? p.price * q : 0);
+                      return sum + (p && p.stock > 0 ? p.price * q : 0);
                     }, 0).toLocaleString()}
                   </span>
                 </div>
-                <button
-                  className="btn btn-primary"
-                  style={{ padding: "10px 20px", fontSize: "1rem", fontWeight: 600 }}
-                  onClick={handleCheckoutCart}
-                  disabled={loading}
-                >
-                  {loading ? "Processing Order..." : "Place Order (Checkout)"}
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+                  {Object.keys(cart).some((id) => !products.some((p) => p.id === id && p.stock > 0)) && (
+                    <span style={{ color: "var(--danger)", fontSize: "0.85rem", fontWeight: 600 }}>
+                      ⚠️ Remove unavailable items before checkout
+                    </span>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    style={{ padding: "10px 20px", fontSize: "1rem", fontWeight: 600 }}
+                    onClick={handleCheckoutCart}
+                    disabled={loading || Object.keys(cart).some((id) => !products.some((p) => p.id === id && p.stock > 0))}
+                  >
+                    {loading ? "Processing Order..." : "Place Order (Checkout)"}
+                  </button>
+                </div>
               </div>
             </div>
           )}

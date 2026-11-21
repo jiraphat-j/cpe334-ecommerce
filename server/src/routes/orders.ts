@@ -79,13 +79,27 @@ ordersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      itemMap.set(productId, (itemMap.get(productId) || 0) + quantity);
+      const currentTotal = itemMap.get(productId) || 0;
+      const combinedQty = currentTotal + quantity;
+      // Guard against aggregated quantity exceeding PostgreSQL 32-bit integer range (Reviewer P2)
+      if (combinedQty > 2_147_483_647 || !Number.isSafeInteger(combinedQty)) {
+        res.status(400).json({
+          success: false,
+          error: { code: "INVALID_QUANTITY", message: "Total combined quantity per product exceeds supported integer limit." },
+        });
+        return;
+      }
+
+      itemMap.set(productId, combinedQty);
     }
 
-    const normalizedItems = Array.from(itemMap.entries()).map(([productId, quantity]) => ({
-      productId,
-      quantity,
-    }));
+    // Sort items deterministically by productId to prevent deadlocks (40P01) during concurrent checkouts (Reviewer P1)
+    const normalizedItems = Array.from(itemMap.entries())
+      .map(([productId, quantity]) => ({
+        productId,
+        quantity,
+      }))
+      .sort((a, b) => a.productId.localeCompare(b.productId));
 
     // Execute atomic transaction for stock verification, deduction, and order creation
     const result = await prisma.$transaction(async (tx) => {
