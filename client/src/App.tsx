@@ -311,6 +311,31 @@ export function App() {
     }
   };
 
+  const handleCancelOrder = async (orderId: string) => {
+    if (!token || loading || !window.confirm("Cancel this order?")) return;
+    setMessage(null);
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/cancel`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setMessage({ text: "Order cancelled.", type: "success" });
+        await Promise.all([loadMyOrders(), loadProducts()]);
+      } else {
+        setMessage({ text: data.error?.message ?? "Failed to cancel order.", type: "error" });
+        if (response.status === 409) await loadMyOrders();
+      }
+    } catch {
+      setMessage({ text: "Could not reach the server. Check your order history before retrying.", type: "error" });
+      await loadMyOrders();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Operator: Update order status (AC-09, AC-10)
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     if (!token) return;
@@ -331,6 +356,7 @@ export function App() {
         await loadOperatorOrders();
       } else {
         setMessage({ text: `❌ Status update failed: ${data.error?.message || "Unknown error"}`, type: "error" });
+        if (res.status === 409) await loadOperatorOrders();
       }
     } catch (err: any) {
       setMessage({ text: err.message || "Network error", type: "error" });
@@ -764,6 +790,7 @@ export function App() {
                   <th>Items</th>
                   <th>Total Amount</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -781,6 +808,14 @@ export function App() {
                     <td style={{ fontWeight: 600 }}>฿{order.total_amount.toLocaleString()}</td>
                     <td>
                       <span className={`status-badge status-${order.status}`}>{order.status}</span>
+                    </td>
+                    <td>
+                      {order.status === "PENDING" && (
+                        <button className="btn btn-danger" type="button" disabled={loading}
+                          onClick={() => handleCancelOrder(order.id)}>
+                          Cancel Order
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

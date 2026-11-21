@@ -1,12 +1,76 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../prisma.js";
-import { authenticateToken } from "../middleware/auth.js";
-import { OrderStatus } from "@prisma/client";
+import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { OrderStatus, Prisma } from "@prisma/client";
 
 export const ordersRouter = Router();
 
 // Enforce authentication on all /api/orders routes
 ordersRouter.use(authenticateToken);
+
+class StockLimitError extends Error {}
+
+// POST /api/orders/:id/cancel - Customer cancellation and stock restoration (F-07)
+ordersRouter.post("/:id/cancel", requireRole("CUSTOMER"), async (req, res): Promise<void> => {
+  const { id } = req.params;
+  const customerId = req.user!.id;
+
+  try {
+    const existing = await prisma.order.findUnique({
+      where: { id },
+      select: { customer_id: true },
+    });
+
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: "ORDER_NOT_FOUND", message: "Order not found." } });
+      return;
+    }
+    if (existing.customer_id !== customerId) {
+      res.status(403).json({
+        success: false,
+        error: { code: "FORBIDDEN", message: "You can only cancel your own orders." },
+      });
+      return;
+    }
+
+    const order = await prisma.$transaction(async (tx) => {
+      const cancelled = await tx.order.update({
+        where: { id, customer_id: customerId, status: OrderStatus.PENDING },
+        data: { status: OrderStatus.CANCELLED },
+        include: { items: true },
+      });
+
+      // Match checkout's product lock order. Archived products still hold inventory.
+      const items = [...cancelled.items].sort((a, b) => a.product_id.localeCompare(b.product_id));
+      for (const { product_id, quantity } of items) {
+        const restored = await tx.product.updateMany({
+          where: { id: product_id, stock: { lte: 2_147_483_647 - quantity } },
+          data: { stock: { increment: quantity } },
+        });
+        if (restored.count !== 1) {
+          throw new StockLimitError("Restoring this order would exceed the stock limit.");
+        }
+      }
+      return cancelled;
+    });
+
+    res.json({ success: true, data: { order } });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      res.status(409).json({
+        success: false,
+        error: { code: "INVALID_TRANSITION", message: "Only pending orders can be cancelled." },
+      });
+      return;
+    }
+    if (error instanceof StockLimitError) {
+      res.status(409).json({ success: false, error: { code: "STOCK_LIMIT", message: error.message } });
+      return;
+    }
+    console.error("Customer cancellation failed:", error);
+    res.status(500).json({ success: false, error: { code: "SERVER_ERROR", message: "Failed to cancel order." } });
+  }
+});
 
 // POST /api/orders - Customer Order Placement (F-03, F-06, AC-F06-01 to AC-F06-05)
 ordersRouter.post("/", async (req: Request, res: Response): Promise<void> => {

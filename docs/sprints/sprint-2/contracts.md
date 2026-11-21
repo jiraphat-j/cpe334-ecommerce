@@ -107,3 +107,45 @@ Integration contract with F-07: Order items stored in `OrderItem` provide the au
 
 Definition of Done: contract committed before implementation, automated tests capture RED on pre-change code, GREEN on the fix, regression suite passes, UI cart flow supports multi-item checkout, and teammate review is conducted on the PR into `staging-sprint-2`.
 
+## F-07 · Customer cancellation and stock restoration
+
+Issue #39. Author: @jiraphat-j. Reviewer: @thanapornboont-star.
+Extends FR-05 (order history), BR-02 (record isolation), BR-03 (inventory),
+BR-04 (atomic stock updates), BR-05 (order transitions), NFR-01 and NFR-03.
+
+### Workflow and API
+
+`POST /api/orders/:id/cancel` has no request body. A Customer uses Cancel
+Order in My Orders and confirms before sending the request. Success returns
+200 with `{ success: true, data: { order } }` and the stored CANCELLED order
+and its line items. My Orders and the catalog are refreshed.
+
+The API returns 401 without authentication, 403 for an Operator or a
+different Customer, and 404 for an unknown order ID. Only PENDING orders
+can be cancelled. Non-PENDING orders and lost races return 409
+`INVALID_TRANSITION` with no stock changes.
+
+The status write is conditional on ownership and PENDING. In the same
+transaction, restore each saved OrderItem quantity, including archived
+products, using the same product lock order as F-06. Keep saved prices,
+quantities and totals. If a restoration would exceed the database stock
+range, roll back the entire change and return 409 `STOCK_LIMIT`.
+The existing Operator status route compares the previously read status
+when writing, so a concurrent confirmation cannot overwrite a customer
+cancellation. A lost Operator update returns 409. The existing direct
+Operator status actions retain their inventory behavior.
+
+### Acceptance criteria and verification
+
+| AC / STS | Expected result |
+| --- | --- |
+| AC-F07-01 / TEST-F07-01 | Owner cancels a PENDING order, all saved quantities are restored, and a fresh GET shows CANCELLED with unchanged prices. |
+| AC-F07-02 / TEST-F07-02 | Unauthenticated requests return 401, forbidden role or ownership returns 403, and no order or stock changes. Unknown order returns 404. |
+| AC-F07-03 / TEST-F07-03 | Non-PENDING, sequential retries and overlapping cancellation requests cannot restore inventory again. A stock overflow rolls back both status and stock. |
+| AC-F07-04 / TEST-F07-04 | On PostgreSQL, overlapping cancellation and Operator confirmation produce one successful transition, and final inventory reflects the winner. |
+| AC-F07-05 / TEST-F07-05 | Cancellation works for orders created by the Sprint 1 single-item and Sprint 2 multi-item checkout paths. |
+
+Definition of Done: commit the contract before code, capture RED and GREEN,
+verify API and UI journeys with PostgreSQL, and obtain teammate review
+before staging merge. Deployment verification is tracked in #40.
+
