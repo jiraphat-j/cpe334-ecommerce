@@ -87,11 +87,30 @@
 
 ---
 
-## 3. Product Definition of Done (DoD) - Sprint 1
+## 4. Lab 7 Maintenance Revision: Per-Product Order Limit (`BR-LIMIT-05`)
 
-A feature or increment is deemed **Done** only when:
-1. **Contract Compliance:** All Acceptance Criteria (`AC-01` to `AC-10`) implemented as specified.
-2. **Automated Verification:** All Software Test Specifications (`TEST-01` to `TEST-16`) pass 100% in automated test runs.
-3. **Security Invariant:** Zero real secrets, tokens, or `.env` credentials in repository code or commits.
-4. **Peer Review Invariant:** Implemented on a feature branch, integrated into `staging-sprint-1` through a Pull Request reviewed and approved by the non-author teammate.
-5. **Traceability:** Execution evidence (test output, commit SHA) recorded and mapped to requirement IDs for the final Deliverable 1 PDF report.
+> **Revision Reference:** Lab 7 Maintenance Request #51  
+> **Approved By:** Course Instructor / TA (24 Nov 2026)  
+> **Scope:** Bounded change to Sprint 1 `F-03` Order Placement & Sprint 2 `F-06` Multi-Item Checkout  
+> **Pre-change Baseline:** `de83f5a0bc27a0bb85b17ba88f47caeaf3c204be` (Merge PR #50)  
+> **Sprint 1 Reference Baseline:** `ddf4d25` (Merge PR #36)
+
+### Acceptance Criteria (AC-L7)
+- **AC-L7-01 (Single SKU Cap):** When a Customer submits an order where any product's requested quantity exceeds 5 (e.g. quantity = 6), the system rejects the request with HTTP `400 Bad Request` and `{ success: false, error: { code: "ORDER_QUANTITY_LIMIT_EXCEEDED", message: "Cannot order more than 5 units of a single product." } }`.
+- **AC-L7-02 (Cart Aggregated SKU Cap):** When a Customer submits a multi-item cart containing duplicate entries of the same product ID whose combined quantity exceeds 5 (e.g. 3 + 3 = 6), the system rejects the request with HTTP `400 Bad Request` and code `ORDER_QUANTITY_LIMIT_EXCEEDED`.
+- **AC-L7-03 (Exact Boundary Pass):** When a Customer orders exactly 5 units of a product and stock is sufficient, the order succeeds with HTTP `201 Created` and stock is decremented by 5.
+- **AC-L7-04 (Multi-SKU Distinct Pass):** When a Customer orders multiple distinct products where each product quantity $\le 5$ (e.g. 3 of Product A and 3 of Product B), the order succeeds with HTTP `201 Created` with sufficient stock.
+- **AC-L7-05 (Stock Priority Preservation):** When a Customer orders 5 units of a product that only has 4 units in stock, the request is rejected with HTTP `400 Bad Request` and code `INSUFFICIENT_STOCK`.
+- **AC-L7-06 (No State Mutation on Rejection):** Whenever an order is rejected due to quantity limit exceeded, no database rows are created in `orders` or `order_items`, and product stock remains unchanged.
+
+### Software Test Specification Extension (STS-L7)
+
+| Test ID | Linked AC | Test Level | Input / Precondition | Action | Expected Outcome |
+|---|---|:---:|---|---|---|
+| **TEST-L7-01** | AC-L7-03 | Integration / Unit | Product with stock = 10, Customer token | `POST /api/orders` with `{ productId, quantity: 5 }` | HTTP 201; Order created; Stock decremented to 5. |
+| **TEST-L7-02** | AC-L7-01 | Integration / Unit | Product with stock = 10, Customer token | `POST /api/orders` with `{ productId, quantity: 6 }` | HTTP 400 with `ORDER_QUANTITY_LIMIT_EXCEEDED`; Stock unchanged; No order created. |
+| **TEST-L7-03** | AC-L7-02 | Integration / Unit | Cart with duplicate product items `[3, 3]` | `POST /api/orders` with items array | HTTP 400 with `ORDER_QUANTITY_LIMIT_EXCEEDED`; Stock unchanged. |
+| **TEST-L7-04** | AC-L7-04 | Integration / Unit | Cart with distinct products `[3, 3]` | `POST /api/orders` with items array | HTTP 201; Both products decremented by 3. |
+| **TEST-L7-05** | AC-L7-05 | Integration / Unit | Product with stock = 4, quantity = 5 | `POST /api/orders` with `{ productId, quantity: 5 }` | HTTP 400 with `INSUFFICIENT_STOCK`. |
+| **TEST-L7-06** | AC-L7-01 | Integration / Unit | Cart with item quantity = 6 | `POST /api/orders` with `{ items: [{ productId, quantity: 6 }] }` | HTTP 400 with `ORDER_QUANTITY_LIMIT_EXCEEDED`. |
+
