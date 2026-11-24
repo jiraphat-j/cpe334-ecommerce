@@ -120,7 +120,7 @@ describe("F-06 Atomic multi-item cart checkout", () => {
       .send({ items: [{ productId: "p1", quantity: 1.5 }] });
     expect(resFraction.status).toBe(400);
 
-    // Aggregated quantity exceeding PostgreSQL 32-bit int
+    // Aggregated quantity exceeding limit / integer bounds (Lab 7 BR-LIMIT-05 ceiling of 5 per product)
     const resOverflow = await request(app)
       .post("/api/orders")
       .set("Authorization", customerToken)
@@ -131,7 +131,7 @@ describe("F-06 Atomic multi-item cart checkout", () => {
         ],
       });
     expect(resOverflow.status).toBe(400);
-    expect(resOverflow.body.error.code).toBe("INVALID_QUANTITY");
+    expect(["ORDER_QUANTITY_LIMIT_EXCEEDED", "INVALID_QUANTITY"]).toContain(resOverflow.body.error.code);
   });
 
   it("TEST-F06-02: rejects and rolls back if an item is archived or missing", async () => {
@@ -206,7 +206,7 @@ describe("F-06 Atomic multi-item cart checkout", () => {
       .send({
         items: [
           { productId: "p1", quantity: 1 },
-          { productId: "p2", quantity: 10 }, // exceeds stock
+          { productId: "p2", quantity: 5 }, // within 5-unit limit, but exceeds available stock
         ],
       });
 

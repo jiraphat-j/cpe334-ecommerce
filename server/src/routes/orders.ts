@@ -154,6 +154,18 @@ ordersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
+      // Enforce per-product purchase limit of at most 5 units per order (BR-LIMIT-05 / CR-LAB7-01 / #51)
+      if (combinedQty > 5) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "ORDER_QUANTITY_LIMIT_EXCEEDED",
+            message: "Cannot order more than 5 units of a single product per order.",
+          },
+        });
+        return;
+      }
+
       itemMap.set(productId, combinedQty);
     }
 
