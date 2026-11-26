@@ -120,7 +120,7 @@ describe("F-06 Atomic multi-item cart checkout", () => {
       .send({ items: [{ productId: "p1", quantity: 1.5 }] });
     expect(resFraction.status).toBe(400);
 
-    // Aggregated quantity exceeding PostgreSQL 32-bit int
+    // Aggregated quantity exceeding limit / integer bounds
     const resOverflow = await request(app)
       .post("/api/orders")
       .set("Authorization", customerToken)
@@ -206,7 +206,7 @@ describe("F-06 Atomic multi-item cart checkout", () => {
       .send({
         items: [
           { productId: "p1", quantity: 1 },
-          { productId: "p2", quantity: 10 }, // exceeds stock
+          { productId: "p2", quantity: 5 }, // within 5-unit limit, but exceeds available stock
         ],
       });
 

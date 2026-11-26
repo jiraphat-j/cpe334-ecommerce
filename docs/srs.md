@@ -70,6 +70,7 @@ This project engineers an E-Commerce Ordering System that provides:
 | **BR-04** | Atomic Stock Deduction | Order creation and stock decrement must execute inside a single atomic database transaction. | Database Transaction |
 | **BR-05** | Status State Machine | An order cannot transition backward (e.g., `SHIPPED` to `PENDING`). An order in `CANCELLED` status cannot be confirmed or shipped. | Backend Business Logic |
 | **BR-06** | Role Access Restriction | Endpoints under `/api/operator/*` must reject unauthenticated requests with `401 Unauthorized` and reject non-operator users (e.g. `CUSTOMER`) with `403 Forbidden`. | Backend Middleware |
+| **BR-LIMIT-05** | Per-Product Purchase Limit (Lab 7) | In any order placement (both single-item Buy Now and multi-item cart checkout), the aggregated quantity for any individual product/SKU cannot exceed 5 units ($\le 5$). Orders exceeding 5 units for any SKU must be rejected with HTTP `400 Bad Request` and error code `ORDER_QUANTITY_LIMIT_EXCEEDED` before stock deduction or order creation. | Backend Business Logic / Transaction |
 
 ---
 
