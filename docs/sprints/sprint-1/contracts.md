@@ -101,7 +101,7 @@ A feature or increment is deemed **Done** only when:
 ## 4. Lab 7 Maintenance Revision: Per-Product Order Limit (`BR-LIMIT-05`)
 
 > **Revision Reference:** Lab 7 Maintenance Request #51  
-> **Approved By:** Course Instructor / TA (24 Nov 2026)  
+> **Approved By:** Course Instructor (Permission to proceed given in class on 24 Nov 2026 without waiting for separate TA approval; recorded in Issue #51)  
 > **Scope:** Bounded change to Sprint 1 `F-03` Order Placement & Sprint 2 `F-06` Multi-Item Checkout  
 > **Pre-change Baseline:** `de83f5a0bc27a0bb85b17ba88f47caeaf3c204be` (Merge PR #50)  
 > **Sprint 1 Reference Baseline:** `ddf4d25` (Merge PR #36)
