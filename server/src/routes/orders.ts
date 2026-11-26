@@ -154,8 +154,12 @@ ordersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      // Enforce per-product purchase limit of at most 5 units per order (BR-LIMIT-05 / CR-LAB7-01 / #51)
-      if (combinedQty > 5) {
+      itemMap.set(productId, combinedQty);
+    }
+
+    // Enforce per-product purchase limit of at most 5 units per order (BR-LIMIT-05 / CR-LAB7-01 / #51)
+    for (const [, quantity] of itemMap.entries()) {
+      if (quantity > 5) {
         res.status(400).json({
           success: false,
           error: {
@@ -165,8 +169,6 @@ ordersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
         });
         return;
       }
-
-      itemMap.set(productId, combinedQty);
     }
 
     // Sort items deterministically by productId to prevent deadlocks (40P01) during concurrent checkouts (Reviewer P1)

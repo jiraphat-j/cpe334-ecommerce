@@ -36,26 +36,30 @@ const prodB = { id: "prod-B", name: "Ergonomic Gaming Mouse", price: 800, stock:
 const prodLowStock = { id: "prod-Low", name: "Limited Edition Keycap", price: 500, stock: 4, archived_at: null };
 
 describe("Lab 7 Maintenance (CR-LAB7-01 / #51): Per-Product Purchase Limit (BR-LIMIT-05)", () => {
+  let updateManySpy: any;
+
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
   // Helper to mock successful atomic transaction
   function mockTransactionSuccess(stockMap: Record<string, any>) {
+    updateManySpy = vi.fn().mockImplementation(({ where, data }: { where: any; data: any }) => {
+      const product = stockMap[where.id];
+      if (!product) return Promise.resolve({ count: 0 });
+      if (where.stock?.gte !== undefined && product.stock < where.stock.gte) {
+        return Promise.resolve({ count: 0 });
+      }
+      return Promise.resolve({ count: 1 });
+    });
+
     vi.mocked(prisma.$transaction).mockImplementation(async (callback) => {
       const tx = {
         product: {
           findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
             return Promise.resolve(stockMap[where.id] || null);
           }),
-          updateMany: vi.fn().mockImplementation(({ where, data }: { where: any; data: any }) => {
-            const product = stockMap[where.id];
-            if (!product) return Promise.resolve({ count: 0 });
-            if (where.stock?.gte !== undefined && product.stock < where.stock.gte) {
-              return Promise.resolve({ count: 0 });
-            }
-            return Promise.resolve({ count: 1 });
-          }),
+          updateMany: updateManySpy,
         },
         order: {
           create: vi.fn().mockImplementation(({ data }: { data: any }) => {
@@ -76,15 +80,16 @@ describe("Lab 7 Maintenance (CR-LAB7-01 / #51): Per-Product Purchase Limit (BR-L
     });
   }
 
-  // TEST-L7-01: Exact boundary (5 units) passes when stock is sufficient
-  it("TEST-L7-01: accepts order with exactly 5 units of a single product", async () => {
+  // TEST-L7-01: Exact boundary (5 units) passes via legacy Buy Now payload and decrements stock from 10 to 5
+  it("TEST-L7-01: accepts legacy Buy Now order with exactly 5 units and decrements stock", async () => {
     mockTransactionSuccess({ "prod-A": prodA });
 
     const res = await request(app)
       .post("/api/orders")
       .set("Authorization", customerToken)
       .send({
-        items: [{ productId: "prod-A", quantity: 5 }],
+        productId: "prod-A",
+        quantity: 5,
       });
 
     expect(res.status).toBe(201);
@@ -92,6 +97,12 @@ describe("Lab 7 Maintenance (CR-LAB7-01 / #51): Per-Product Purchase Limit (BR-L
     expect(res.body.data.order).toBeDefined();
     expect(res.body.data.order.items).toHaveLength(1);
     expect(res.body.data.order.items[0].quantity).toBe(5);
+    expect(updateManySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "prod-A", stock: { gte: 5 } }),
+        data: { stock: { decrement: 5 } },
+      })
+    );
   });
 
   // TEST-L7-02: Exceeding 5 units (6 units) must be rejected with 400 ORDER_QUANTITY_LIMIT_EXCEEDED
@@ -177,6 +188,26 @@ describe("Lab 7 Maintenance (CR-LAB7-01 / #51): Per-Product Purchase Limit (BR-L
       .send({
         productId: "prod-A",
         quantity: 6,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("ORDER_QUANTITY_LIMIT_EXCEEDED");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // TEST-L7-07: Mixed cart containing a valid line (prod-B: 2) and an over-limit line (prod-A: 6) rejects with no writes
+  it("TEST-L7-07: rejects mixed cart containing a valid line and an over-limit line with no transaction/writes", async () => {
+    mockTransactionSuccess({ "prod-A": prodA, "prod-B": prodB });
+
+    const res = await request(app)
+      .post("/api/orders")
+      .set("Authorization", customerToken)
+      .send({
+        items: [
+          { productId: "prod-B", quantity: 2 },
+          { productId: "prod-A", quantity: 6 },
+        ],
       });
 
     expect(res.status).toBe(400);
